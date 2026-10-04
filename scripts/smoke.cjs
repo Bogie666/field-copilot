@@ -152,9 +152,50 @@ async function noOverflow(page, label) {
     await noOverflow(page, "summary");
     console.log("PASS summary ordering, six-key payload, no label leak, review-gated copy, stale on change");
 
+    // 7b. Ported tools: airflow save, nameplate extras, notes persistence
+    await page.goto(jobUrl, { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: /Furnace or air handler/ }).click();
+    await page.getByRole("link", { name: /Nameplate scan/ }).click();
+    await page.getByLabel("Temperature rise range (F, for example 35-65)").fill("35-65");
+    await page.getByLabel("Max external static (in. w.c.)").fill("0.5");
+    await page.getByRole("button", { name: "Save equipment" }).click();
+    await page.getByRole("button", { name: "Saved" }).waitFor();
+    await page.goBack();
+    await page.getByRole("link", { name: /Airflow/ }).click();
+    await page.getByLabel("Method").selectOption("flow-hood");
+    await page.getByLabel("System tonnage (tons)").fill("3");
+    await page.getByLabel("Airflow reading 1 (CFM)").fill("1200");
+    await page.getByText(/400/).first().waitFor();
+    await page.getByRole("button", { name: "Save finding" }).click();
+    await page.getByRole("button", { name: "Saved" }).waitFor();
+    await page.goBack();
+    await page.getByRole("link", { name: /Voice notes/ }).click();
+    await page.getByLabel("Notes", { exact: true }).fill("Customer reports uneven cooling upstairs.");
+    await page.getByText("Saved to this job").waitFor();
+    await page.waitForTimeout(300);
+    await page.reload({ waitUntil: "networkidle" });
+    assert.equal(await page.getByLabel("Notes", { exact: true }).inputValue(), "Customer reports uneven cooling upstairs.");
+    await noOverflow(page, "notes tool");
+    console.log("PASS nameplate extras, airflow save, notes persistence");
+
+    // 7c. Insulation vermiculite is a safety finding that needs an action and a photo
+    await page.goto(jobUrl, { waitUntil: "networkidle" });
+    await page.getByRole("link", { name: /Attic and ductwork/ }).click();
+    await page.getByRole("link", { name: /Attic insulation/ }).click();
+    await page.getByLabel("Suspected vermiculite (possible asbestos)").check();
+    await page.getByLabel("Depth reading 1 (in)").fill("5");
+    await page.getByLabel("Climate zone").selectOption("3");
+    await page.getByRole("heading", { name: "Safety condition" }).waitFor().catch(() => undefined);
+    const insulationSave = page.getByRole("button", { name: /Save finding/ });
+    assert.equal(await insulationSave.isDisabled(), true, "insulation safety finding is blocked without action and photo");
+    console.log("PASS insulation safety gating");
+
     // 8. Standalone tools do not save
     await page.goto(`${BASE}/tools`, { waitUntil: "networkidle" });
     await page.getByRole("heading", { name: "Tools" }).waitFor();
+    await page.goto(`${BASE}/tools/explain`, { waitUntil: "networkidle" });
+    await page.getByLabel("Finding").fill("Return static pressure measured above the rated value.");
+    await page.getByRole("button", { name: "Generate estimate note" }).waitFor();
 
     assert.deepEqual(errors, []);
     console.log("ALL PASS");

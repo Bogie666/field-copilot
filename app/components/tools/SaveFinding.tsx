@@ -26,13 +26,16 @@ type Props = {
   /** Hash of the current inputs, to tell saved from unsaved edits. */
   hash: string;
   safetyPrompt?: string;
+  /** Offered through a button. Never filled in without the tech pressing it. */
+  suggestedRecommendation?: string;
+  suggestedSafetyAction?: string;
 };
 
 /**
  * Review step shared by every finding tool: optional next step, a required safety action
  * for safety results, then Save. Nothing is written until the tech presses Save.
  */
-export default function SaveFinding({ ctx, built, hash, safetyPrompt }: Props) {
+export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedRecommendation, suggestedSafetyAction }: Props) {
   const { api, saved, scope, toolId } = ctx;
   const [recommendation, setRecommendation] = useState(saved?.recommendation ?? "");
   const [safetyAction, setSafetyAction] = useState(saved?.safetyAction ?? "");
@@ -117,8 +120,18 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt }: Props) {
           </Callout>
         )}
         {isSafety && <TextField label="Safety action taken" value={safetyAction} onChange={setSafetyAction} multiline hint={safetyPrompt ?? "Describe what you did about the hazard."} />}
+        {isSafety && suggestedSafetyAction && !safetyAction.trim() && (
+          <button className="btn ghost" type="button" onClick={() => setSafetyAction(suggestedSafetyAction)}>
+            Use suggested wording (edit to match what you did)
+          </button>
+        )}
         {isSafety && ctx.system && <PhotoPicker systemId={ctx.system.id} selected={photoIds} onChange={setPhotoIds} required={built.requiresPhotoForSafety} />}
         <TextField label="Recommended next step (optional)" value={recommendation} onChange={setRecommendation} multiline hint="Only write what you recommend. The customer note never invents a recommendation." />
+        {suggestedRecommendation && !recommendation.trim() && (
+          <button className="btn ghost" type="button" onClick={() => setRecommendation(suggestedRecommendation)}>
+            Use suggested next step
+          </button>
+        )}
         <ErrorList errors={errors} />
       </section>
       <ActionBar note={message || (unchanged ? "Saved to this job" : saved ? "You have unsaved changes" : blocked ? (missingSafety ? "Add the safety action to save" : "Attach a photo to save") : "Not saved yet")}>

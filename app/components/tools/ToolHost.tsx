@@ -5,7 +5,12 @@ import type { ToolId } from "../../lib/job/registry";
 import type { ToolContext } from "./context";
 import AirflowTool from "./AirflowTool";
 import DuctTool from "./DuctTool";
+import InsulationTool from "./InsulationTool";
 import LoadScreeningTool from "./LoadScreeningTool";
+import ExplainTool from "./ExplainTool";
+import NameplateTool from "./NameplateTool";
+import NotesTool from "./NotesTool";
+import PhotosTool from "./PhotosTool";
 import ChargeTool from "./ChargeTool";
 import ElectricalTool from "./ElectricalTool";
 import FurnaceTool from "./FurnaceTool";
@@ -21,6 +26,11 @@ const REGISTRY: Partial<Record<ToolId, ToolComponent>> = {
   airflow: AirflowTool,
   duct: DuctTool,
   load: LoadScreeningTool,
+  insulation: InsulationTool,
+  nameplate: NameplateTool,
+  photos: PhotosTool,
+  notes: NotesTool,
+  explain: ExplainTool,
 };
 
 export function ToolHost({ ctx }: { ctx: ToolContext }) {

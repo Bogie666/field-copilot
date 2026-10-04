@@ -6,7 +6,7 @@ import { ListLink, PageHead } from "../components/ui";
 export const metadata: Metadata = { title: "Tools" };
 
 // Tools that make sense without a job. Equipment scan and photos belong to a system.
-const STANDALONE = ["electrical", "charge", "furnace", "static", "airflow", "insulation", "duct", "load", "notes", "explain"] as const;
+const STANDALONE = ["electrical", "charge", "furnace", "static", "airflow", "insulation", "duct", "load", "explain"] as const;
 
 export default function ToolsPage() {
   return (
