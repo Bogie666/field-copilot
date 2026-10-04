@@ -42,6 +42,7 @@ function formatReading(r: Reading): string {
  * and never reads the job label or any customer-identifying field.
  */
 export function composeExplanationInput(findings: Finding[], options: ComposeOptions = {}): ComposeResult {
+  findings = findings.filter((f) => !f.staleAt);
   const suggestedUrgency = suggestUrgency(findings);
   const issues: string[] = [];
   if (findings.length === 0) return { input: null, issues: ["Select at least one finding."], suggestedUrgency };

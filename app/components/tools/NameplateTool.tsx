@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { EMPTY_NAMEPLATE_FIELDS, NAMEPLATE_FIELD_KEYS, parseNameplateText, type NameplateFieldKey } from "../../lib/nameplate";
-import { parseNameplateExtras } from "../../lib/nameplateExtras";
+import { useEffect, useRef, useState } from "react";
+import { prepareNameplateImage, type PreparedNameplateImage } from "../../lib/nameplateImage";
+import { EMPTY_NAMEPLATE_FIELDS, NAMEPLATE_FIELD_KEYS, type NameplateFieldKey } from "../../lib/nameplate";
+import { readDeviceNameplate, fillNameplateBlanks } from "../../lib/nameplateScan";
 import { Callout, TextField } from "../ui";
 import { ActionBar } from "../ui";
 import type { ToolContext } from "./context";
@@ -22,16 +23,63 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
   const [paste, setPaste] = useState("");
   const [note, setNote] = useState("");
   const [saved, setSaved] = useState(false);
+  const [prepared, setPrepared] = useState<PreparedNameplateImage | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const controller = useRef<AbortController | null>(null);
+  const [scanStatus, setScanStatus] = useState("");
+  const [progress, setProgress] = useState(0);
+  const camera = useRef<HTMLInputElement>(null);
+  const gallery = useRef<HTMLInputElement>(null);
+  useEffect(() => () => { request.current++; controller.current?.abort(); }, []);
 
+  function cancel() {
+    request.current++; controller.current?.abort(); controller.current = null;
+    setBusy(false); setScanStatus("Scan cancelled. Manual entry is still available.");
+  }
+
+  async function scan() {
+    if (!prepared || busy) return;
+    const id = ++request.current;
+    const abort = new AbortController(); controller.current = abort;
+    setBusy(true); setError(""); setScanStatus("Loading device OCR…"); setProgress(0);
+    try {
+      const text = await readDeviceNameplate(prepared.enhancedDataUrl, abort.signal, (status, amount) => {
+        if (id !== request.current) return;
+        setScanStatus(`Device OCR: ${status}`); setProgress(amount);
+      });
+      if (id !== request.current) return;
+      setPaste(text);
+      setFields(c => fillNameplateBlanks(c, text, edited.current));
+      setSaved(false);
+      setScanStatus(text.trim() ? "Scan complete. Check every field against the photo before saving." : "No readable text. Retake the photo or enter the plate manually.");
+    } catch (e) {
+      if (id === request.current) setError(e instanceof Error ? `${e.message} Try a clearer photo or manual entry.` : "Device OCR failed. Use manual entry.");
+    } finally {
+      if (id === request.current) { setBusy(false); controller.current = null; }
+    }
+  }
+
+  async function choose(file: File | undefined) {
+    if (!file) return;
+    controller.current?.abort();
+    const id = ++request.current;
+    setBusy(true); setError(""); setPrepared(null); setScanStatus("");
+    try {
+      const image = await prepareNameplateImage(file);
+      if (id === request.current) setPrepared(image);
+    } catch (e) {
+      if (id === request.current) setError(e instanceof Error ? e.message : "Could not open this photo.");
+    } finally {
+      if (id === request.current) setBusy(false);
+    }
+  }
+
+
+  const edited = useRef(new Set<string>());
   function readPasted() {
-    const parsed = parseNameplateText(paste);
-    const extras = parseNameplateExtras(paste);
-    setFields((c) => {
-      const next = { ...c };
-      for (const k of NAMEPLATE_FIELD_KEYS) if (parsed.fields[k] && !c[k].trim()) next[k] = parsed.fields[k];
-      for (const k of ["tempRiseRange", "maxExternalStatic"] as const) if (extras[k] && !c[k].trim()) next[k] = extras[k];
-      return next;
-    });
+    setFields((c) => fillNameplateBlanks(c, paste, edited.current));
     setNote("Filled empty fields only. Check every value against the plate before saving.");
     setSaved(false);
   }
@@ -49,6 +97,26 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
     <div className="stack">
       <Callout title="You confirm every field">Type the values from the plate. Nothing is read from a serial number. Age is whatever you enter, and blank means unknown.</Callout>
       <div className="panel">
+        <h3>Camera and device OCR</h3>
+        <p className="hint">Fill the frame with a sharp, glare-free plate. Device OCR keeps the photo in this browser; no paid vision is used. The first scan may download OCR language files.</p>
+        <input ref={camera} className="visuallyHidden" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Take a nameplate photo" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
+        <input ref={gallery} className="visuallyHidden" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose a nameplate photo" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
+        <div className="pillrow">
+          <button className="btn" type="button" onClick={() => camera.current?.click()}>Take plate photo</button>
+          <button className="btn" type="button" onClick={() => gallery.current?.click()}>Choose plate photo</button>
+        </div>
+        {prepared && <>
+          <img src={prepared.colorDataUrl} alt="Selected equipment nameplate" style={{ width: "100%", height: "auto" }} />
+          <button className="btn" type="button" disabled={busy} onClick={() => void scan()}>Read on device</button>
+        </>}
+        {busy && <>
+          <progress max={1} value={progress} aria-label="Device OCR progress" />
+          <button className="btn" type="button" onClick={cancel}>Cancel scan</button>
+        </>}
+        <p role="status">{scanStatus || (busy ? "Preparing photo…" : "")}</p>
+        {error && <p role="alert">{error}</p>}
+      </div>
+      <div className="panel">
         <h3>Paste plate text (optional)</h3>
         <TextField label="Text from the plate" value={paste} onChange={setPaste} multiline hint="For example text from a phone's photo text selection. Only blank fields are filled." />
         <button className="btn" type="button" onClick={readPasted} disabled={!paste.trim()}>Fill blank fields</button>
@@ -57,7 +125,7 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
       <div className="panel">
         <h3>Equipment</h3>
         {KEYS.map((k) => (
-          <TextField key={k} label={LABELS[k]} value={fields[k]} onChange={(v) => { setFields((c) => ({ ...c, [k]: v })); setSaved(false); }} maxLength={80} />
+          <TextField key={k} label={LABELS[k]} value={fields[k]} onChange={(v) => { edited.current.add(k); setFields((c) => ({ ...c, [k]: v })); setSaved(false); }} maxLength={80} />
         ))}
         <TextField label="Equipment age (years, optional)" value={age} onChange={(v) => { setAge(v); setSaved(false); }} maxLength={3} />
       </div>

@@ -1,6 +1,6 @@
 import type { JobStore } from "./store";
 import type { Job, JobSummary } from "./types";
-import { summarizeJob } from "./types";
+import { normalizeJobExtensions, summarizeJob } from "./types";
 
 const DB_NAME = "field-copilot";
 const DB_VERSION = 1;
@@ -56,7 +56,8 @@ export class IndexedDbJobStore implements JobStore {
 
   async get(id: string): Promise<Job | null> {
     const db = await this.db();
-    return (await request<Job | undefined>(db.transaction(JOBS).objectStore(JOBS).get(id))) ?? null;
+    const job = await request<Job | undefined>(db.transaction(JOBS).objectStore(JOBS).get(id));
+    return job ? normalizeJobExtensions(job) : null;
   }
 
   async put(job: Job): Promise<void> {
@@ -64,6 +65,21 @@ export class IndexedDbJobStore implements JobStore {
     const tx = db.transaction(JOBS, "readwrite");
     tx.objectStore(JOBS).put(job);
     await done(tx);
+  }
+
+  async putJobAndPhoto(job: Job, photoId: string, blob: Blob): Promise<void> {
+    const db = await this.db();
+    const tx = db.transaction([JOBS, PHOTOS], "readwrite");
+    const committed = done(tx);
+    try {
+      tx.objectStore(PHOTOS).put(blob, photoId);
+      tx.objectStore(JOBS).put(job);
+    } catch (error) {
+      tx.abort();
+      await committed.catch(() => undefined);
+      throw error;
+    }
+    await committed;
   }
 
   async delete(id: string): Promise<void> {

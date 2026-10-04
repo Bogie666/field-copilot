@@ -1,14 +1,15 @@
 // Browser smoke test for the job flow. No AI calls: /api/explain is intercepted.
 //
-//   npm run build && FIELD_COPILOT_AUTH_ENABLED=false npx next start -p 3037 &
-//   COPILOT_URL=http://127.0.0.1:3037 npm run smoke
+//   npm run build
+//   FIELD_COPILOT_AUTH_ENABLED=false npm run start -- -p 3000
+//   COPILOT_URL=http://127.0.0.1:3000 npm run smoke
 //
 // CHROMIUM_PATH overrides the browser binary (defaults to the sandbox's pre-installed Chromium).
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const { chromium } = require("playwright-core");
 
-const BASE = process.env.COPILOT_URL || "http://127.0.0.1:3037";
+const BASE = process.env.COPILOT_URL || "http://127.0.0.1:3000";
 const EXECUTABLE = process.env.CHROMIUM_PATH || (fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);
 
 const NOTE =

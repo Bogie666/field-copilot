@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "./route";
 import { validateExplanationResult } from "../../lib/fieldAi";
 const { config, create } = vi.hoisted(() => ({ config: vi.fn(), create: vi.fn() }));
-vi.mock("../../lib/aiProvider", () => ({ getAiProviderConfig: config }));
+vi.mock("../../lib/aiProvider", async (importOriginal) => ({ ...await importOriginal<typeof import("../../lib/aiProvider")>(), getAiProviderConfig: config }));
 const source = { diagnosis: "No gas leak documented", readings: "", recommendation: "", equipmentType: "heat pump", equipmentAge: 14, urgency: "routine" };
 function request(body: unknown = source, signal?: AbortSignal) { return new Request("http://localhost/api/explain", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal }); }
 describe("estimate note route", () => {
@@ -69,6 +69,18 @@ describe("estimate note route", () => {
     const aborting = new ReadableStream({ pull(streamController) { controller.abort(); streamController.error(new Error("cancelled read")); } });
     const abortReq = new Request("http://localhost", { method: "POST", headers: { "Content-Type": "application/json" }, body: aborting, signal: controller.signal, duplex: "half" } as RequestInit);
     expect((await POST(abortReq)).status).toBe(499);
+  });
+  it("returns a clear 503 for missing configuration and hides unexpected errors", async () => {
+    const { AiConfigurationError } = await import("../../lib/aiProvider");
+    config.mockImplementation(() => { throw new AiConfigurationError("AI_PROVIDER=openrouter requires OPENROUTER_API_KEY."); });
+    const response = await POST(request());
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "AI_PROVIDER=openrouter requires OPENROUTER_API_KEY." });
+    config.mockImplementation(() => { throw new Error("secret-value"); });
+    const unexpected = await POST(request());
+    expect(unexpected.status).toBe(503);
+    expect(JSON.stringify(await unexpected.json())).not.toContain("secret-value");
+    expect(create).not.toHaveBeenCalled();
   });
   it("accepts structured inputs and returns a labeled offline note", async () => {
     const response = await POST(request());

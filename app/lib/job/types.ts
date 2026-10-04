@@ -42,6 +42,18 @@ export type Finding = {
   confirmedAt: string;
   /** Hash of the inputs that produced it, used to detect out-of-date findings. */
   inputsHash: string;
+  /** Historical evidence retained, but excluded from customer/AI composition until reconfirmed. */
+  staleAt?: string;
+  staleReason?: string;
+};
+
+export type ToolDraft = {
+  toolId: string;
+  scope: FindingScope;
+  /** Separate form and review fields so their updates cannot overwrite each other. */
+  slot: string;
+  inputs: Record<string, unknown>;
+  updatedAt: string;
 };
 
 export type PhotoMeta = {
@@ -71,6 +83,10 @@ export type Job = {
   updatedAt: string;
   systems: JobSystem[];
   findings: Finding[];
+  /** Optional for backward compatibility with jobs created before drafts existed. */
+  drafts?: ToolDraft[];
+  /** Previous explicit confirmations retained locally, never included in AI composition. */
+  findingHistory?: Finding[];
   photos: PhotoMeta[];
   homeNotes: string;
 };
@@ -107,7 +123,7 @@ const MAX_TEXT = 2000;
  * Rules come from the build spec: safety findings need an action (and a photo where required),
  * readings are never blank, and nothing carries customer-identifying fields.
  */
-export function validateFinding(value: unknown): string[] {
+export function validateFinding(value: unknown, job?: Job): string[] {
   const errors: string[] = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return ["Finding must be an object."];
   const f = value as Partial<Finding>;
@@ -120,7 +136,8 @@ export function validateFinding(value: unknown): string[] {
   if (!f.severity || !SEVERITIES.includes(f.severity)) errors.push("Severity must be info, ok, concern or safety.");
   if (typeof f.title !== "string" || !f.title.trim()) errors.push("Finding needs a title.");
   if (typeof f.diagnosis !== "string" || !f.diagnosis.trim()) errors.push("Finding needs a documented diagnosis.");
-  for (const [name, text] of [["title", f.title], ["diagnosis", f.diagnosis], ["reference", f.reference], ["recommendation", f.recommendation], ["safetyAction", f.safetyAction]] as const) {
+  for (const [name, text] of [["title", f.title], ["diagnosis", f.diagnosis], ["reference", f.reference], ["recommendation", f.recommendation], ["safetyAction", f.safetyAction], ["staleReason", f.staleReason], ["staleAt", f.staleAt]] as const) {
+    if (text !== undefined && typeof text !== "string") errors.push(`${name} must be text.`);
     if (typeof text === "string" && text.length > MAX_TEXT) errors.push(`${name} is longer than ${MAX_TEXT} characters.`);
   }
   if (!Array.isArray(f.readings)) {
@@ -141,6 +158,16 @@ export function validateFinding(value: unknown): string[] {
       if (!["entered", "nameplate", "computed"].includes(r.source)) errors.push(`Reading ${n} needs a source.`);
     });
   }
+  if (f.photoIds !== undefined && (!Array.isArray(f.photoIds) || f.photoIds.some(id => typeof id !== "string" || !id))) errors.push("Photo attachments must be a list of IDs.");
+  if (job) {
+    if (scope?.kind === "system" && !job.systems.some(s => s.id === scope.systemId)) errors.push("The finding's system is not in this job.");
+    if (Array.isArray(f.photoIds)) {
+      for (const id of f.photoIds) {
+        const photo = job.photos.find(p => p.id === id);
+        if (!photo || (scope?.kind === "system" ? photo.systemId !== scope.systemId : photo.systemId !== null)) errors.push("An attached photo is missing or belongs to a different scope.");
+      }
+    }
+  }
   if (f.severity === "safety") {
     if (typeof f.safetyAction !== "string" || !f.safetyAction.trim()) errors.push("A safety finding needs a documented safety action.");
     if (f.requiresPhotoForSafety && !(Array.isArray(f.photoIds) && f.photoIds.length > 0)) errors.push("This safety finding needs at least one photo.");
@@ -149,6 +176,29 @@ export function validateFinding(value: unknown): string[] {
   if (typeof f.confirmedAt !== "string" || Number.isNaN(Date.parse(f.confirmedAt))) errors.push("Finding needs a confirmation time.");
   if (typeof f.inputsHash !== "string" || !f.inputsHash) errors.push("Finding needs an inputs hash.");
   return errors;
+}
+
+/** Optional persisted extensions are untrusted; missing fields remain backward compatible. */
+export function validToolDraft(value: unknown, job?: Job): value is ToolDraft {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const d = value as Partial<ToolDraft>;
+  if (typeof d.toolId !== "string" || !d.toolId || typeof d.slot !== "string" || !d.slot || typeof d.updatedAt !== "string" || Number.isNaN(Date.parse(d.updatedAt))) return false;
+  if (!d.scope || (d.scope.kind !== "home" && !(d.scope.kind === "system" && typeof d.scope.systemId === "string" && d.scope.systemId))) return false;
+  if (job && d.scope.kind === "system" && !job.systems.some(s => s.id === (d.scope as { systemId: string }).systemId)) return false;
+  if (!d.inputs || typeof d.inputs !== "object" || Array.isArray(d.inputs)) return false;
+  try { return JSON.stringify(d.inputs).length <= 20_000; } catch { return false; }
+}
+
+export function normalizeJobExtensions(job: Job): Job {
+  return {
+    ...job,
+    findings: job.findings.map(f => {
+      const attachmentIssues = validateFinding(f, job).filter(issue => /photo|system is not in this job/i.test(issue));
+      return attachmentIssues.length ? { ...f, staleAt: f.staleAt ?? job.updatedAt, staleReason: "An attached photo is missing or belongs to another scope. Review attachments and explicitly reconfirm before using this finding." } : f;
+    }),
+    ...(job.drafts === undefined ? {} : { drafts: Array.isArray(job.drafts) ? job.drafts.filter(d => validToolDraft(d, job)) : [] }),
+    ...(job.findingHistory === undefined ? {} : { findingHistory: Array.isArray(job.findingHistory) ? job.findingHistory.filter(f => { try { return validateFinding(f).length === 0; } catch { return false; } }) : [] }),
+  };
 }
 
 export function newId(prefix: string): string {

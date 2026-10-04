@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useJob } from "../JobProvider";
 
 export default function PhotoThumb({ photoId, alt }: { photoId: string; alt: string }) {
-  const { getPhotoUrl } = useJob();
+  const { getPhotoUrl, job } = useJob();
+  const version = job?.updatedAt;
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -14,6 +15,6 @@ export default function PhotoThumb({ photoId, alt }: { photoId: string; alt: str
     return () => {
       cancelled = true;
     };
-  }, [getPhotoUrl, photoId]);
+  }, [getPhotoUrl, photoId, version]);
   return url ? <img src={url} alt={alt} /> : <span className="hint" style={{ padding: 6 }}>Loading</span>;
 }

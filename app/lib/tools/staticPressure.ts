@@ -59,7 +59,10 @@ export function assessStatic(input: StaticInput): StaticAssessment {
   let reference = "";
   if (rated.ok === true) {
     percentOfRated = (tesp / rated.value) * 100;
-    const above = tesp > rated.value;
+    if (!Number.isFinite(percentOfRated)) return { errors: ["Static percentage is nonfinite. Check the rated external static."], result: null };
+    // Allow only floating-point addition noise, not display-rounding tolerance.
+    const equalityNoise = Number.EPSILON * Math.max(tesp, rated.value) * 2;
+    const above = tesp - rated.value > equalityNoise;
     severity = above ? "concern" : "ok";
     reference = `rated external static ${fixed(rated.value, 2)} in. w.c.`;
     items.push({

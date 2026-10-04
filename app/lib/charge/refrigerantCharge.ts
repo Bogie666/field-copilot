@@ -1,6 +1,6 @@
 import type { Reading } from "../job/types";
 import { fmt, parseDecimal, worstTone, type ResultItem } from "../tools/numbers";
-import { PT_TABLES, saturationTempF, type PtTable } from "./ptData";
+import { PT_DATA_APPROVED, PT_DATA_SOURCE, PT_TABLES, saturationTempF, type PtTable } from "./ptData";
 
 export type MeteringDevice = "txv" | "orifice";
 
@@ -42,6 +42,7 @@ export const ORIFICE_FORMULA_RANGE = { outdoorDryBulbF: [55, 115], indoorWetBulb
 export const ORIFICE_FORMULA_LABEL = "Screening formula (3 x indoor wet bulb - 80 - outdoor dry bulb) / 2. The manufacturer charging chart governs.";
 
 export function orificeTargetSuperheatF(indoorWetBulbF: number, outdoorDryBulbF: number): { ok: true; targetF: number } | { ok: false; reason: string } {
+  if (!Number.isFinite(indoorWetBulbF) || !Number.isFinite(outdoorDryBulbF)) return { ok: false, reason: "Formula temperatures must be finite numbers. Use the manufacturer chart." };
   const [odbMin, odbMax] = ORIFICE_FORMULA_RANGE.outdoorDryBulbF;
   const [iwbMin, iwbMax] = ORIFICE_FORMULA_RANGE.indoorWetBulbF;
   if (outdoorDryBulbF < odbMin || outdoorDryBulbF > odbMax) return { ok: false, reason: `Outdoor dry bulb ${fmt(outdoorDryBulbF, 0)} F is outside the formula range of ${odbMin} to ${odbMax} F. Use the manufacturer chart.` };
@@ -102,8 +103,10 @@ export function assessCharge(input: ChargeInput, tables: readonly PtTable[] = PT
   const superheatF = suctionLineF.value - dew.tempF;
   const subcoolingF = bubble.tempF - liquidLineF.value;
   const items: ResultItem[] = [];
-  const notes: string[] = [];
+  const provisional = PT_DATA_APPROVED ? "" : "Provisional charge comparison: pressure-temperature data is not approved. Verify against your gauge set or manufacturer chart before relying on this classification.";
+  const notes: string[] = provisional ? [provisional] : [];
   const references: string[] = [`${input.refrigerant} pressure-temperature data (sea-level gauge pressure)`];
+  references.push(`PT source: ${PT_DATA_SOURCE}.${PT_DATA_APPROVED ? "" : " Provisional data, not approved."}`);
   let targetSuperheatF: number | null = null;
 
   const shBase = `Superheat ${fmt(superheatF)} F (suction line ${fmt(suctionLineF.value)} F, dew point ${fmt(dew.tempF)} F at ${fmt(suctionPsig.value, 0)} psig).`;
@@ -171,7 +174,7 @@ export function assessCharge(input: ChargeInput, tables: readonly PtTable[] = PT
       items,
       notes,
       severity: tone === "concern" ? "concern" : tone === "ok" ? "ok" : "info",
-      diagnosis: items.map((i) => i.line).join(" "),
+      diagnosis: [provisional, ...items.map((i) => i.line)].filter(Boolean).join(" "),
       readings,
       reference: references.join("; "),
     },

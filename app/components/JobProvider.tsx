@@ -5,7 +5,7 @@ import { getBrowserStore, requestPersistence } from "../lib/job/browserStore";
 import { setPersistenceState } from "../lib/job/persistenceStatus";
 import { jobReducer, type JobAction } from "../lib/job/reducer";
 import type { JobStore } from "../lib/job/store";
-import { newId, validateFinding, type Finding, type FindingScope, type Job, type JobSystem, type PhotoMeta } from "../lib/job/types";
+import { newId, normalizeJobExtensions, validateFinding, type Finding, type FindingScope, type Job, type JobSystem, type PhotoMeta } from "../lib/job/types";
 import { compressImage, MAX_PHOTOS_PER_SYSTEM } from "../lib/photoCompress";
 
 type DistributiveOmit<T, K extends keyof never> = T extends unknown ? Omit<T, K> : never;
@@ -47,12 +47,19 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
   const loadedRef = useRef<Job | null>(null);
   const latestRef = useRef<Job | null>(null);
   const urlsRef = useRef<Map<string, string>>(new Map());
+  const writesRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueWrite = useCallback((write: () => Promise<void>) => {
+    const result = writesRef.current.then(write);
+    writesRef.current = result.catch(() => undefined); // Failed writes never poison retries.
+    return result;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
     store
       .get(jobId)
-      .then((found) => {
+      .then((stored) => {
+        const found = stored ? normalizeJobExtensions(stored) : null;
         if (cancelled) return;
         if (!found) {
           setStatus("missing");
@@ -91,8 +98,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
     }
     setPersistenceState("saving");
     let current = true;
-    store
-      .put(job)
+    enqueueWrite(() => store.put(latestRef.current?.id === job.id ? latestRef.current : job))
       .then(() => {
         if (current) setPersistenceState("saved");
       })
@@ -102,12 +108,12 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
     return () => {
       current = false;
     };
-  }, [job, store]);
+  }, [job, store, enqueueWrite]);
 
   useEffect(() => {
     const flush = () => {
       const latest = latestRef.current;
-      if (latest && latest !== loadedRef.current && store.persistent) void store.put(latest).catch(() => undefined);
+      if (latest && latest !== loadedRef.current && store.persistent) void enqueueWrite(() => store.put(latestRef.current?.id === latest.id ? latestRef.current : latest)).catch(() => undefined);
     };
     const onHide = () => {
       if (document.visibilityState === "hidden") flush();
@@ -119,7 +125,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
       window.removeEventListener("pagehide", flush);
       flush();
     };
-  }, [store]);
+  }, [store, enqueueWrite]);
 
   const dispatch = useCallback((action: JobActionInput) => {
     setJob((current) => {
@@ -133,7 +139,9 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
   const saveFinding = useCallback(
     (input: FindingInput): SaveResult => {
       const finding: Finding = { ...input, confirmedAt: new Date().toISOString() };
-      const errors = validateFinding(finding);
+      const current = latestRef.current;
+      if (!current) return { ok: false, errors: ["The job is not open."] };
+      const errors = validateFinding(finding, current);
       if (errors.length) return { ok: false, errors };
       dispatch({ type: "upsertFinding", finding });
       return { ok: true };
@@ -195,15 +203,29 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
 
   const replacePhotoBlob = useCallback(
     async (photoId: string, blob: Blob) => {
+      const current = latestRef.current;
+      if (!current?.photos.some(p => p.id === photoId)) throw new Error("This photo is no longer available.");
       const jpeg = await compressImage(blob);
-      await store.putPhoto(photoId, jpeg);
-      const old = urlsRef.current.get(photoId);
-      if (old) {
-        URL.revokeObjectURL(old);
-        urlsRef.current.delete(photoId);
-      }
+      await enqueueWrite(async () => {
+        if (latestRef.current?.id !== current.id || !latestRef.current.photos.some(p => p.id === photoId)) throw new Error("The photo or job changed. Open it again.");
+        const latest = latestRef.current;
+        const next = { ...latest, updatedAt: new Date().toISOString(), photos: latest.photos.map(p => p.id === photoId ? { ...p, bytes: jpeg.size, mime: jpeg.type } : p) };
+        await store.putJobAndPhoto(next, photoId, jpeg);
+        const old = urlsRef.current.get(photoId);
+        if (old) {
+          URL.revokeObjectURL(old);
+          urlsRef.current.delete(photoId);
+        }
+        // Publish only after the all-or-nothing transaction commits. Keep edits made while it ran.
+        const after = latestRef.current;
+        if (after?.id !== current.id) return;
+        const merged = after === latest ? next : { ...after, updatedAt: next.updatedAt, photos: after.photos.map(p => p.id === photoId ? { ...p, bytes: jpeg.size, mime: jpeg.type } : p) };
+        loadedRef.current = next;
+        latestRef.current = merged;
+        setJob(merged);
+      });
     },
-    [store],
+    [store, enqueueWrite],
   );
 
   const activeSystem = job ? (job.systems.find((s) => s.id === activeSystemId) ?? job.systems[0] ?? null) : null;

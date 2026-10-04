@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { copyText } from "../../lib/clientTools";
 import { TOOLS } from "../../lib/job/registry";
-import type { Finding, Reading, Severity } from "../../lib/job/types";
+import { hashInputs, type Finding, type Reading, type Severity } from "../../lib/job/types";
 import { ActionBar, Callout, ErrorList, SeverityChip, TextField } from "../ui";
 import type { ToolContext } from "./context";
 import PhotoPicker from "./PhotoPicker";
+import { useFormState } from "./useFormState";
 
 export type BuiltFinding = {
   severity: Severity;
@@ -37,23 +38,33 @@ type Props = {
  */
 export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedRecommendation, suggestedSafetyAction }: Props) {
   const { api, saved, scope, toolId } = ctx;
-  const [recommendation, setRecommendation] = useState(saved?.recommendation ?? "");
-  const [safetyAction, setSafetyAction] = useState(saved?.safetyAction ?? "");
-  const [photoIds, setPhotoIds] = useState<string[]>(saved?.photoIds ?? []);
+  const [review, setReview] = useFormState(ctx, { recommendation: "", safetyAction: "", photoIds: [] as string[] }, undefined, {
+    slot: "review",
+    savedInputs: { recommendation: saved?.recommendation ?? "", safetyAction: saved?.safetyAction ?? "", photoIds: saved?.photoIds ?? [] },
+  });
+  const { recommendation, safetyAction } = review;
+  const photoIds = review.photoIds.filter(id => api?.job?.photos.some(p => p.id === id && (scope?.kind === "system" ? p.systemId === scope.systemId : p.systemId === null)));
+  const setRecommendation = (value: string) => setReview("recommendation", value);
+  const setSafetyAction = (value: string) => setReview("safetyAction", value);
+  const setPhotoIds = (value: string[]) => setReview("photoIds", value);
   // Outcome of the last Save press. It only applies to the inputs it was pressed for.
   const [outcome, setOutcome] = useState<{ hash: string; message: string; errors: string[] } | null>(null);
   const current = outcome && outcome.hash === hash ? outcome : null;
   const errors = current?.errors ?? [];
   const message = current?.message ?? "";
 
+  const [reviewedStamp, setReviewedStamp] = useState<string | null>(null);
+  const reviewStamp = hashInputs({ hash, equipment: ctx.system?.equipment, staleAt: saved?.staleAt });
+  const stale = !!saved?.staleAt;
+  const staleNotice = stale ? <Callout title="Finding needs reconfirmation"><p>{saved?.staleReason}</p><p>This historical finding is excluded from customer notes until you review the readings and references and explicitly save it again. Old input values are retained, not silently replaced.</p></Callout> : null;
   const tool = TOOLS[toolId];
   const isSafety = built?.severity === "safety";
 
   if (!built) {
     return (
-      <p className="hint" role="status">
+      <>{staleNotice}<p className="hint" role="status">
         Enter your readings to see a result you can save.
-      </p>
+      </p></>
     );
   }
 
@@ -80,13 +91,13 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
     );
   }
 
-  const unchanged = !!saved && saved.inputsHash === hash && (saved.recommendation ?? "") === recommendation.trim() && (saved.safetyAction ?? "") === safetyAction.trim() && (saved.photoIds ?? []).join() === photoIds.join();
+  const unchanged = !stale && !!saved && saved.inputsHash === hash && (saved.recommendation ?? "") === recommendation.trim() && (saved.safetyAction ?? "") === safetyAction.trim() && (saved.photoIds ?? []).join() === photoIds.join();
   const missingSafety = isSafety && !safetyAction.trim();
   const missingPhoto = isSafety && !!built.requiresPhotoForSafety && photoIds.length === 0;
-  const blocked = missingSafety || missingPhoto;
+  const blocked = missingSafety || missingPhoto || (stale && reviewedStamp !== reviewStamp);
 
   function save() {
-    if (!api || !scope || !tool.findingKey || !built) return;
+    if (!api || !scope || !tool.findingKey || !built || blocked) return;
     const finding: Omit<Finding, "confirmedAt"> = {
       key: tool.findingKey,
       toolId,
@@ -110,6 +121,7 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
 
   return (
     <>
+      {staleNotice}
       <section className="panel" aria-label="Review and save">
         <h3>
           Save to this job <SeverityChip severity={built.severity} />
@@ -132,11 +144,12 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
             Use suggested next step
           </button>
         )}
+        {stale && <label className="check"><input type="checkbox" checked={reviewedStamp === reviewStamp} onChange={(e) => setReviewedStamp(e.target.checked ? reviewStamp : null)} />I reviewed the readings and references against the current nameplate.</label>}
         <ErrorList errors={errors} />
       </section>
       <ActionBar note={message || (unchanged ? "Saved to this job" : saved ? "You have unsaved changes" : blocked ? (missingSafety ? "Add the safety action to save" : "Attach a photo to save") : "Not saved yet")}>
         <button className="btn primary" type="button" onClick={save} disabled={blocked || unchanged}>
-          {unchanged ? "Saved" : saved ? "Update finding" : "Save finding"}
+          {unchanged ? "Saved" : stale ? "Reconfirm finding" : saved ? "Update finding" : "Save finding"}
         </button>
         {saved && (
           <button className="btn danger" type="button" onClick={() => api.dispatch({ type: "removeFinding", key: saved.key, scope: saved.scope })}>

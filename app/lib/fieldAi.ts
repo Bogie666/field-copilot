@@ -53,12 +53,6 @@ export type StructuredNotes = {
   customerDeclinedWork: string;
 };
 
-function cleanString(value: unknown, maxLength: number): string | null {
-  if (typeof value !== "string") return null;
-  const clean = value.trim().slice(0, maxLength);
-  return clean || null;
-}
-
 export function explanationWordCount(note: string): number {
   return note.trim() ? note.trim().split(/\s+/).length : 0;
 }
@@ -94,11 +88,11 @@ export function validateStructuredNotes(value: unknown): StructuredNotes | null 
   const keys: Array<keyof StructuredNotes> = ["workPerformed", "measurementsReadings", "diagnosisFindings", "recommendations", "customerDeclinedWork"];
   const output = {} as StructuredNotes;
   for (const key of keys) {
-    const item = cleanString(record[key], 8_000);
-    if (!item) return null;
-    output[key] = item;
+    const item = record[key];
+    if (typeof item !== "string" || item.length > MAX_TRANSCRIPT_CHARS || !item.trim()) return null;
+    output[key] = item.trim();
   }
-  return output;
+  return formatStructuredNotes(output).length <= MAX_TRANSCRIPT_CHARS ? output : null;
 }
 
 export function explanationFallback(input: ExplanationInput): ExplanationResult {

@@ -1,6 +1,16 @@
 # Handoff
 
-State: all four tiles and every tool work end to end in the browser smoke test. Lint, typecheck, 163 unit tests and the production build pass.
+State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings and late-response note protection. Lint, typecheck, 283 unit tests across 38 files and the production build pass.
+
+## Release hardening
+
+- Provisional PT provenance and warnings persist in saved findings and customer-note source data; the approval flag remains false.
+- Unclassified CO readings never create an overall green result. Measurement location/basis remain explicitly unknown until documented; no company threshold was invented.
+- Comparisons classify raw values before rounding, preserve inclusive static-pressure equality, and reject nonfinite derived results. Insulation safety observations can be documented without including invalid measurement values.
+- Photo references are checked against the current job and scope; deletion prunes unsaved review selections. Legacy missing-photo evidence is marked stale and excluded from AI until reconfirmed.
+- Photo markup blob and metadata replacement commits atomically. Serialized writes preserve concurrent notes and prevent pagehide from reverting metadata.
+- Notes use a 12,000-character limit throughout persistence and tidying, with oversized results rejected rather than silently truncated. Malformed drafts/history fail closed.
+- Runtime dependency audit: no vulnerabilities. Full audit: five existing high advisories in the development-only ESLint/fast-glob/micromatch/braces chain; latest braces 3.0.3 is still affected. No forced framework downgrade was made.
 
 ## Open decisions (need an owner)
 
@@ -14,12 +24,12 @@ State: all four tiles and every tool work end to end in the browser smoke test. 
 
 ## Not done or limited
 
-- Nameplate: manual entry plus "paste plate text" parsing only. The old camera OCR (tesseract.js) and vision flow are not ported. `app/api/nameplate-ocr` and `app/lib/nameplateImage.ts` are ready to wire in. AI vision is off by default.
-- Photos: no annotation or markup (the old `PhotoAnnotator` is not ported). `replacePhotoBlob` exists in the job API for it.
-- Notes: single text field per system or home. Dictation uses the browser's speech API, without the old restart logic.
+- Nameplate: camera/gallery capture with on-device Tesseract OCR, manual entry and paste parsing. OCR fills only untouched empty fields, and every value requires technician confirmation. The first device scan downloads OCR assets. Paid vision remains off.
+- Photos: arrow/circle/freehand/text annotation with undo, cancel and explicit save. Markup is flattened into the saved photo; the same photo ID and safety attachments are retained.
+- Notes: text per system/home, browser dictation, explicit AI tidying with cancellation/stale-edit protection. Manual changes dispatch immediately to avoid a debounce loss window. Browser speech support varies; automatic recognition restart is not implemented.
 - No cloud sync. Jobs live in IndexedDB on one device. No offline app shell or service worker.
-- Unsaved tool inputs are not persisted as drafts. Only saved findings reopen.
-- No detection that a finding is out of date after the nameplate changes.
-- The accent override applies in dark mode too, which may reduce contrast.
-- Manifest icons are SVG only. Add PNG sizes for older Android and iOS.
+- Finding-tool inputs and review fields (next step, safety action, photo selections) now persist as separate per-job/per-system/tool drafts in the existing local job store. Drafts reopen before saved inputs or nameplate suggestions. Typing does not save a finding; explicit valid Save clears that tool’s drafts. Standalone tools remain memory-only. Nameplate/OCR/photo-tool pending state is owned by the camera workstream and is not covered by this draft hook.
+- Confirmed equipment changes now flag affected system findings as stale: identity fields (manufacturer/model/serial/equipment type) affect all system findings; RLA/voltage/phase affect electrical, refrigerant affects charge, temperature-rise range affects furnace, max external static affects static, and capacity affects airflow. Age and unrelated fields do not invalidate findings. Stale evidence remains visible, including safety actions, but is disabled for customer-note selection and filtered again in the composition layer. Reopening the tool requires an explicit review checkbox and Save to reconfirm; old values are not silently updated. Previous confirmations are retained in local finding history and shown on the summary. The private job-summary copy explicitly labels stale evidence. This is field-dependency invalidation, not a manufacturer-reference or elapsed-time expiry system; old pre-feature replacements cannot be reconstructed.
+- Accent button ink now chooses the higher-contrast dark/white foreground. Custom accent links/focus in both themes still need visual review when branding is changed.
+- Manifest includes 192/512 PNG icons and an Apple 180 PNG icon, generated from the original SVG.
 - The earlier Claude Doc build spec was written for the old repo and is partly superseded.

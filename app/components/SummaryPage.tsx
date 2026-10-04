@@ -25,7 +25,7 @@ export default function SummaryPage() {
   const [ageOverride, setAgeOverride] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
 
-  const chosen = useMemo(() => (job ? job.findings.filter((f) => selected.has(findingId(f))) : []), [job, selected]);
+  const chosen = useMemo(() => (job ? job.findings.filter((f) => !f.staleAt && selected.has(findingId(f))) : []), [job, selected]);
   const soleSystem = useMemo(() => {
     if (!job) return null;
     const ids = new Set(chosen.flatMap((f) => (f.scope.kind === "system" ? [f.scope.systemId] : [])));
@@ -39,7 +39,7 @@ export default function SummaryPage() {
   const age = ageText.trim() ? Number(ageText) : null;
   const suggested = suggestUrgency(chosen);
   const urgency = urgencyChoice || suggested;
-  const composed = composeExplanationInput(chosen, { equipmentType, equipmentAge: Number.isFinite(age as number) ? age : null, urgency });
+  const composed = composeExplanationInput(chosen, { equipmentType, equipmentAge: age, urgency });
   const issues = chosen.length === 0 ? [] : composed.issues;
   const safetyChosen = chosen.some((f) => f.severity === "safety");
   const sortedAll = [...job.findings].sort((a, b) => ORDER[a.severity] - ORDER[b.severity]);
@@ -66,7 +66,7 @@ export default function SummaryPage() {
     for (const g of groups) {
       lines.push("", g.title.toUpperCase());
       for (const f of g.findings) {
-        lines.push(`- [${f.severity}] ${f.title}: ${f.diagnosis}`);
+        lines.push(`- [${f.staleAt ? "STALE - needs reconfirmation; " : ""}${f.severity}] ${f.title}: ${f.diagnosis}`);
         if (f.reference) lines.push(`  Reference: ${f.reference}`);
         if (f.recommendation) lines.push(`  Next step: ${f.recommendation}`);
         if (f.safetyAction) lines.push(`  Safety action: ${f.safetyAction}`);
@@ -105,7 +105,7 @@ export default function SummaryPage() {
                         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                           <span className="severityBar" data-severity={f.severity} aria-hidden="true" style={{ alignSelf: "stretch" }} />
                           <label className="check" style={{ flex: "1 1 180px", minWidth: 0, border: 0, padding: 0, background: "transparent" }}>
-                            <input type="checkbox" checked={selected.has(id)} onChange={() => toggle(f)} />
+                            <input type="checkbox" disabled={!!f.staleAt} checked={!f.staleAt && selected.has(id)} onChange={() => toggle(f)} />
                             <span>
                               <strong>{f.title}</strong>
                               <span style={{ display: "block" }} className="hint">
@@ -115,6 +115,7 @@ export default function SummaryPage() {
                           </label>
                           <SeverityChip severity={f.severity} />
                         </div>
+                        {f.staleAt && <Callout title="Finding needs reconfirmation"><p>{f.staleReason}</p><p>Excluded from customer notes. Reopen this tool to review and reconfirm; historical readings are retained.</p></Callout>}
                         <p>{f.diagnosis}</p>
                         {f.readings.length > 0 && (
                           <details>
@@ -163,6 +164,20 @@ export default function SummaryPage() {
           </section>
         </>
       )}
+      {(job.findingHistory?.length ?? 0) > 0 && <section className="panel" aria-label="Finding history">
+        <h2>Finding history</h2>
+        <p className="hint">Previous confirmations, for technician records only. These are never selected or sent to the customer-note generator.</p>
+        {[...(job.findingHistory ?? [])].reverse().map((f, index) => <details key={`${findingId(f)}:${f.confirmedAt}:${index}`}>
+          <summary>{f.title} — {f.confirmedAt}{f.staleAt ? " (stale when replaced)" : " (replaced)"}</summary>
+          <p>{f.scope.kind === "home" ? "Whole home" : job.systems.find((s) => f.scope.kind === "system" && s.id === f.scope.systemId)?.name ?? f.scope.systemId}</p>
+          <p>{f.diagnosis}</p>
+          <Plate rows={f.readings.map((r) => ({ label: r.label, value: String(r.value), unit: r.unit }))} />
+          {f.reference && <p>Reference: {f.reference}</p>}
+          {f.recommendation && <p>Next step: {f.recommendation}</p>}
+          {f.safetyAction && <p>Safety action: {f.safetyAction}</p>}
+          {f.staleReason && <p>{f.staleReason}</p>}
+        </details>)}
+      </section>}
     </main>
   );
 }

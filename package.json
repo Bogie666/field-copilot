@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "node scripts/smoke.cjs",
+    "smoke:regressions": "node scripts/drafts-smoke.cjs && node scripts/notes-smoke.cjs && node scripts/nameplate-photo-smoke.cjs",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
   "dependencies": {

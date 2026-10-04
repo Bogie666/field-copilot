@@ -55,5 +55,12 @@ export function accentInk(hex: string): string {
     return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   });
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  return luminance > 0.4 ? "#10202a" : "#ffffff";
+  const dark = [16, 32, 42].map((v) => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  const darkLuminance = 0.2126 * dark[0] + 0.7152 * dark[1] + 0.0722 * dark[2];
+  const darkContrast = (Math.max(luminance, darkLuminance) + 0.05) / (Math.min(luminance, darkLuminance) + 0.05);
+  const whiteContrast = 1.05 / (luminance + 0.05);
+  return darkContrast >= whiteContrast ? "#10202a" : "#ffffff";
 }

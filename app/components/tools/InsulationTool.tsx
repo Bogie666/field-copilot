@@ -26,9 +26,15 @@ export default function InsulationTool({ ctx }: { ctx: ToolContext }) {
   const severity = blocked ? "safety" : r.status === "below" || r.status === "condition-review" ? "concern" : r.status === "adequate" ? "ok" : "info";
   const titles: Record<string, string> = { blocked: "Possible moisture or vermiculite in attic", below: "Attic insulation below selected target", "condition-review": "Attic insulation installation issues", adequate: "Attic insulation adequate for selected target" };
   const readings: Reading[] = [
-    ...form.depths.filter((d) => d.trim()).map((d, i) => ({ label: `Depth ${i + 1}`, value: Number(d), unit: "in", source: "entered" as const })),
+    ...form.depths.flatMap((d, i): Reading[] => {
+      const raw = d.trim();
+      const value = Number(raw);
+      // Safety holds remain saveable even if other form measurements are invalid.
+      if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !Number.isFinite(value) || value < 0 || value > 60) return [];
+      return [{ label: `Depth ${i + 1}`, value, unit: "in", source: "entered" }];
+    }),
     ...(r.materialR ? [{ label: "Material-only R range", value: `${r.materialR[0]} to ${r.materialR[1]}`, unit: "R", source: "computed" as const }] : []),
-    ...(form.zone ? [{ label: "Climate zone", value: form.zone, unit: "", source: "entered" as const }] : []),
+    ...(ZONES.includes(form.zone) ? [{ label: "Climate zone", value: form.zone, unit: "", source: "entered" as const }] : []),
   ];
   const diagnosis = blocked ? r.summary.split("\n")[0] : [r.materialSummary, r.conditionSummary].filter(Boolean).join(" ");
   const built: BuiltFinding | null =

@@ -46,7 +46,7 @@ export default function FurnaceTool({ ctx }: { ctx: ToolContext }) {
       </div>
       <div className="panel">
         <h3>Combustion safety</h3>
-        <NumberField label="Flue CO reading (optional)" unit="ppm" value={form.coPpm} onChange={(v) => set("coPpm", v)} />
+        <NumberField label="CO reading (optional)" unit="ppm" value={form.coPpm} onChange={(v) => set("coPpm", v)} hint="Location and measurement basis are unknown in this record. No CO safety classification is made; follow company procedure." />
         <fieldset className="fieldset">
           <legend>Observed conditions</legend>
           {OBSERVATIONS.map((o) => (

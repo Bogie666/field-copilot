@@ -72,7 +72,7 @@ export default function JobList() {
 
   return (
     <main className="page">
-      <PageHead title="Start a job" lede="Each job keeps its readings on this device. Nothing leaves the device until you generate a customer note." />
+      <PageHead title="Start a job" lede="Each job keeps its readings on this device. AI features send only the inputs you explicitly submit." />
       <form
         className="panel"
         onSubmit={(e) => {

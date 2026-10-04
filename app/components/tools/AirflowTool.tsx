@@ -1,6 +1,6 @@
 "use client";
 
-import { assessAirflow, directCfm, EMPTY_AIRFLOW, METHOD_LABELS, tonsFromCapacity, type AirflowInput } from "../../lib/tools/airflow";
+import { assessAirflow, directCfm, EMPTY_AIRFLOW, FLOW_HOOD_READING_SCOPE, METHOD_LABELS, tonsFromCapacity, type AirflowInput } from "../../lib/tools/airflow";
 import { hashInputs } from "../../lib/job/types";
 import { fmt } from "../../lib/tools/numbers";
 import { ErrorList, NumberField, Plate, ResultCard, SelectField } from "../ui";
@@ -55,6 +55,7 @@ export default function AirflowTool({ ctx }: { ctx: ToolContext }) {
       </div>
       <div className="panel">
         <h3>Readings</h3>
+        {form.method === "flow-hood" && <p className="hint">{FLOW_HOOD_READING_SCOPE} The same scope applies to after readings.</p>}
         {form.readings.map((r, i) => (
           <NumberField key={i} label={`${direct ? "Airflow" : "Velocity"} reading ${i + 1}`} unit={unit} value={r} onChange={(v) => setList("readings", i, v)} />
         ))}

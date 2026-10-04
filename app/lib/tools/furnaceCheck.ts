@@ -108,12 +108,13 @@ export function assessFurnace(input: FurnaceInput, config = FURNACE_SAFETY_CONFI
   }
 
   if (co.ok === true) {
-    readings.push({ label: "CO reading", value: co.value, unit: "ppm", source: "entered" });
+    readings.push({ label: "CO reading (location unknown, basis unknown)", value: co.value, unit: "ppm", source: "entered" });
+    reference += `${reference ? "; " : ""}CO measurement location unknown; basis unknown. Follow company measurement procedure.`;
     if (config.coThresholdPpm !== null) {
       const over = co.value >= config.coThresholdPpm;
       items.push({ id: "co", label: "CO", line: `CO ${fmt(co.value, 0)} ppm, ${over ? "at or above" : "below"} the configured ${fmt(config.coThresholdPpm, 0)} ppm threshold.`, tone: over ? "safety" : "ok" });
     } else {
-      items.push({ id: "co", label: "CO", line: `CO ${fmt(co.value, 0)} ppm recorded.`, tone: "info" });
+      items.push({ id: "co", label: "CO", line: `CO ${fmt(co.value, 0)} ppm recorded, not classified. ${config.pendingCoNote}`, tone: "info" });
       notes.push(config.pendingCoNote);
     }
   }
@@ -123,6 +124,7 @@ export function assessFurnace(input: FurnaceInput, config = FURNACE_SAFETY_CONFI
   }
 
   const safety = items.some((i) => i.tone === "safety");
-  const severity: FurnaceResult["severity"] = safety ? "safety" : items.some((i) => i.tone === "concern") ? "concern" : items.some((i) => i.tone === "ok") ? "ok" : "info";
+  const unclassifiedCo = co.ok === true && config.coThresholdPpm === null;
+  const severity: FurnaceResult["severity"] = safety ? "safety" : items.some((i) => i.tone === "concern") ? "concern" : unclassifiedCo ? "info" : items.some((i) => i.tone === "ok") ? "ok" : "info";
   return { errors: [], result: { rise, items, safety, safetyReasons, severity, diagnosis: items.map((i) => i.line).join(" "), readings, reference, notes } };
 }

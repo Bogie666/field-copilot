@@ -23,6 +23,9 @@ describe("resolveBrand", () => {
 });
 
 describe("accentInk", () => {
+  it("chooses readable dark ink for middle-brightness accents", () => {
+    expect(accentInk("#999999")).toBe("#10202a");
+  });
   it("returns dark ink on light accents and white on dark accents", () => {
     expect(accentInk("#ffd400")).toBe("#10202a");
     expect(accentInk("#0b6e7f")).toBe("#ffffff");

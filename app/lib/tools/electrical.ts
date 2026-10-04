@@ -105,6 +105,7 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
     readings.push({ label: "Compressor amps", value: amps, unit: "A", source: "entered" });
     if (rla !== null) {
       const pct = (amps / rla) * 100;
+      if (!Number.isFinite(pct)) return { errors: ["Compressor RLA percentage is nonfinite. Check the readings."], result: null };
       references.push(`compressor RLA ${fmt(rla)} A`);
       items.push({
         id: "compressor",
@@ -121,6 +122,7 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
     readings.push({ label: "Condenser fan amps", value: fanAmps, unit: "A", source: "entered" });
     if (fla !== null) {
       const pct = (fanAmps / fla) * 100;
+      if (!Number.isFinite(pct)) return { errors: ["Fan FLA percentage is nonfinite. Check the readings."], result: null };
       references.push(`fan FLA ${fmt(fla)} A`);
       items.push({
         id: "fan",
@@ -135,6 +137,7 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
 
   if (capMeasured !== null && capRated !== null && capTol !== null) {
     const dev = ((capMeasured - capRated) / capRated) * 100;
+    if (!Number.isFinite(dev) || !Number.isFinite(round(dev, 1))) return { errors: ["Capacitor percentage is nonfinite. Check the readings."], result: null };
     const within = Math.abs(dev) <= capTol;
     readings.push({ label: "Capacitor measured", value: capMeasured, unit: "uF", source: "entered" });
     readings.push({ label: "Capacitor rated", value: capRated, unit: "uF", source: "entered" });

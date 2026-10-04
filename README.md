@@ -12,15 +12,25 @@ npm run dev          # http://localhost:3000
 
 Checks: `npm run verify` runs lint, typecheck, unit tests and a production build.
 
-Browser smoke test (no AI calls, `/api/explain` is intercepted):
+Browser checks (mocked AI only; camera regression uses actual on-device WASM OCR):
 
 ```bash
 npm run build
-FIELD_COPILOT_AUTH_ENABLED=false npx next start -p 3037 &
-COPILOT_URL=http://127.0.0.1:3037 npm run smoke
+FIELD_COPILOT_AUTH_ENABLED=false npm run start -- -p 3000
+# In a second terminal:
+COPILOT_URL=http://127.0.0.1:3000 npm run smoke
+COPILOT_URL=http://127.0.0.1:3000 npm run smoke:regressions
 ```
 
-Set `CHROMIUM_PATH` if Chromium is not at `/opt/pw-browsers/chromium`.
+Set `CHROMIUM_PATH` to your installed Chromium binary. The regressions cover drafts/stale findings, late-response note protection, camera OCR and photo annotation with storage failure/retry. OCR requires initial engine/language asset downloads; paid image analysis is not used.
+
+## OpenRouter test deployment
+
+The separate Vercel project is `field-copilot`; it does not replace `lex-field-copilot`. Set `AI_PROVIDER=openrouter`, encrypted server-side `OPENROUTER_API_KEY`, and `OPENROUTER_MODEL=openai/gpt-4o-mini`. Leave `NAMEPLATE_VISION_ENABLED=false` for device-only OCR. Never use a `NEXT_PUBLIC_` secret.
+
+`/api/health` reports provider/model configuration readiness and the deployed Git SHA without making paid requests. Missing selected credentials fail with 503 rather than silently switching to templates. Text calls are bounded, timed out and not automatically retried.
+
+This test deployment is public by explicit owner choice. AI text requests consume OpenRouter credits. Optional Basic auth remains available; public access is not a spending limit. Jobs remain local to the device, with no cloud sync or full offline app shell. Provisional reference tables and company policy approvals remain visible in `HANDOFF.md`.
 
 ## Brand configuration
 

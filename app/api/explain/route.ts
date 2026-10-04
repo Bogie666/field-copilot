@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAiProviderConfig } from "../../lib/aiProvider";
+import { AiConfigurationError, getAiProviderConfig } from "../../lib/aiProvider";
 import { explanationFallback, explanationMessages, MAX_EXPLANATION_BODY_BYTES, validateExplanationInput, validateExplanationResult } from "../../lib/fieldAi";
 export const dynamic = "force-dynamic";
 const noStore = { "Cache-Control": "no-store, max-age=0" };
@@ -40,7 +40,9 @@ export async function POST(req: Request) {
   const input = validateExplanationInput(body);
   if (!input) return json({ error: "Enter a diagnosis and valid documented fields. Text is limited to 2000 characters; age must be 0–100 years. Unsupported fields are rejected." }, 400);
   if (req.signal.aborted) return json({ error: "Generation cancelled." }, 499);
-  const ai = getAiProviderConfig();
+  let ai;
+  try { ai = getAiProviderConfig(); }
+  catch (error) { return json({ error: error instanceof AiConfigurationError ? error.message : "AI configuration is unavailable. Check AI_PROVIDER and its API key configuration." }, 503); }
   if (!ai.client) return json({ ok: true, provider: "template", ...explanationFallback(input) });
   try {
     const completion = await ai.client.chat.completions.create({

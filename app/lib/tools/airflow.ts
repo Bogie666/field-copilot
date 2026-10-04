@@ -26,6 +26,8 @@ export const METHOD_LABELS: Record<AirflowMethod, string> = {
   estimated: "Estimated CFM",
 };
 
+export const FLOW_HOOD_READING_SCOPE = "Enter repeated whole-system flow-hood readings, not individual outlet readings. Readings are averaged, not summed. Individual outlets must not be compared with the system CFM/ton band.";
+
 export function directCfm(method: AirflowInput["method"]) {
   return method === "flow-hood" || method === "estimated";
 }
@@ -93,11 +95,21 @@ export function assessAirflow(input: AirflowInput): AirflowAssessment {
   if (errors.length || tons.ok !== true) return { errors, result: null };
 
   const toCfm = (v: number) => (direct ? v : input.shape === "rect" ? cfmFromVelocity(v, (width as { value: number }).value, (height as { value: number }).value) : cfmFromRoundDuctVelocity(v, (diameter as { value: number }).value));
+  // Validate raw derived values before helpers round (or replace nonfinite values with zero).
+  const rawAverage = readings.reduce((sum, value) => sum + value, 0) / readings.length;
+  const area = direct ? 1 : input.shape === "rect" ? ((width as { value: number }).value * (height as { value: number }).value) / 144 : Math.PI * ((diameter as { value: number }).value / 24) ** 2;
+  const rawCfm = rawAverage * area;
+  const rawCfmPerTon = rawCfm / tons.value;
+  const rawAfterCfm = after.length ? (after.reduce((sum, value) => sum + value, 0) / after.length) * area : null;
+  const rawChangePct = rawAfterCfm !== null ? ((rawAfterCfm - rawCfm) / rawCfm) * 100 : null;
+  if ([rawCfm, rawCfmPerTon, rawAfterCfm, rawChangePct].some((v) => v !== null && !Number.isFinite(v))) {
+    return { errors: ["Derived airflow or percentage is nonfinite. Check tonnage, dimensions and readings."], result: null };
+  }
   const average = averageReadings(readings);
   const cfm = toCfm(average);
-  const cfmPerTon = roundTo(cfm / tons.value, 0);
-  const band = airflowBandState(cfmPerTon, input.mode);
-  const statusText = airflowBand(cfmPerTon, input.mode);
+  const cfmPerTon = roundTo(rawCfmPerTon, 0);
+  const band = airflowBandState(rawCfmPerTon, input.mode);
+  const statusText = airflowBand(rawCfmPerTon, input.mode);
   const afterCfm = after.length ? toCfm(averageReadings(after)) : null;
   const changeCfm = afterCfm !== null ? roundTo(afterCfm - cfm, 0) : null;
   const changePct = afterCfm !== null && cfm > 0 ? roundTo(((afterCfm - cfm) / cfm) * 100, 1) : null;
@@ -115,5 +127,5 @@ export function assessAirflow(input: AirflowInput): AirflowAssessment {
 
   const out: Reading[] = readings.map((v, i) => ({ label: `${direct ? "Airflow" : "Velocity"} reading ${i + 1}`, value: v, unit, source: "entered" }));
   out.push({ label: "Estimated airflow", value: cfm, unit: "CFM", source: "computed" }, { label: "Airflow per ton", value: cfmPerTon, unit: "CFM/ton", source: "computed" }, { label: "System tonnage", value: tons.value, unit: "tons", source: "entered" });
-  return { errors: [], result: { average, unit, cfm, cfmPerTon, band, statusText, afterCfm, changeCfm, changePct, sensible, total, severity, diagnosis, readings: out, reference: `${input.mode} screening band ${input.mode === "cooling" ? "350 to 450" : "325 to 450"} CFM per ton. Manufacturer airflow data governs.` } };
+  return { errors: [], result: { average, unit, cfm, cfmPerTon, band, statusText, afterCfm, changeCfm, changePct, sensible, total, severity, diagnosis, readings: out, reference: `${input.mode} screening band ${input.mode === "cooling" ? "350 to 450" : "325 to 450"} CFM per ton. Manufacturer airflow data governs.${input.method === "flow-hood" ? ` ${FLOW_HOOD_READING_SCOPE}` : ""}` } };
 }

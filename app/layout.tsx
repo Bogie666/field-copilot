@@ -12,6 +12,7 @@ export const metadata: Metadata = {
   title: { default: brand.productName, template: `%s | ${brand.productName}` },
   description: "Job-based field tools for HVAC technicians: record findings, then turn them into a clear customer estimate note.",
   applicationName: brand.productName,
+  icons: { apple: "/icon-180.png" },
   robots: { index: false, follow: false },
   appleWebApp: { capable: true, title: brand.shortName, statusBarStyle: "default" },
 };
