@@ -22,12 +22,18 @@ export const viewport: Viewport = {
   themeColor: brand.accent || "#0b6e7f",
 };
 
+// Applies a stored light or dark choice before first paint so there is no flash.
+const THEME_BOOT = "try{var t=localStorage.getItem('fc.theme');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t}catch(e){}";
+
 export default function RootLayout({ children }: { children: ReactNode }) {
   const themeStyle = (brand.accent
     ? { "--accent": brand.accent, "--accent-ink": accentInk(brand.accent), "--focus": brand.accent }
     : undefined) as CSSProperties | undefined;
   return (
-    <html lang="en" style={themeStyle}>
+    <html lang="en" style={themeStyle} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+      </head>
       <body>
         <div className="shell">
           <header className="appbar">

@@ -37,6 +37,8 @@ export type Finding = {
   photoIds?: string[];
   /** Whether this finding must carry at least one photo when severity is "safety". */
   requiresPhotoForSafety?: boolean;
+  /** The form values that produced this finding, so a tool can reopen it for editing. Never sent to AI. */
+  inputs?: Record<string, unknown>;
   confirmedAt: string;
   /** Hash of the inputs that produced it, used to detect out-of-date findings. */
   inputsHash: string;
@@ -143,6 +145,7 @@ export function validateFinding(value: unknown): string[] {
     if (typeof f.safetyAction !== "string" || !f.safetyAction.trim()) errors.push("A safety finding needs a documented safety action.");
     if (f.requiresPhotoForSafety && !(Array.isArray(f.photoIds) && f.photoIds.length > 0)) errors.push("This safety finding needs at least one photo.");
   }
+  if (f.inputs !== undefined && (typeof f.inputs !== "object" || f.inputs === null || Array.isArray(f.inputs) || JSON.stringify(f.inputs).length > 20_000)) errors.push("Saved form values are invalid or too large.");
   if (typeof f.confirmedAt !== "string" || Number.isNaN(Date.parse(f.confirmedAt))) errors.push("Finding needs a confirmation time.");
   if (typeof f.inputsHash !== "string" || !f.inputsHash) errors.push("Finding needs an inputs hash.");
   return errors;
