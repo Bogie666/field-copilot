@@ -1,6 +1,6 @@
 import type { Reading } from "../job/types";
 import { fmt, parseDecimal, worstTone, type ResultItem } from "../tools/numbers";
-import { PT_DATA_APPROVED, PT_DATA_SOURCE, PT_TABLES, saturationTempF, type PtTable } from "./ptData";
+import { PT_DATA_APPROVED, ptSourceReference, PT_TABLES, saturationTempF, type PtTable } from "./ptData";
 
 export type MeteringDevice = "txv" | "orifice";
 
@@ -105,8 +105,8 @@ export function assessCharge(input: ChargeInput, tables: readonly PtTable[] = PT
   const items: ResultItem[] = [];
   const provisional = PT_DATA_APPROVED ? "" : "Provisional charge comparison: pressure-temperature data is not approved. Verify against your gauge set or manufacturer chart before relying on this classification.";
   const notes: string[] = provisional ? [provisional] : [];
-  const references: string[] = [`${input.refrigerant} pressure-temperature data (sea-level gauge pressure)`];
-  references.push(`PT source: ${PT_DATA_SOURCE}.${PT_DATA_APPROVED ? "" : " Provisional data, not approved."}`);
+  const references: string[] = [`${input.refrigerant} pressure-temperature data (psig as published; no altitude correction applied)`];
+  references.push(`PT source: ${ptSourceReference(input.refrigerant, tables)}.${PT_DATA_APPROVED ? "" : " Provisional data, not approved."}`);
   let targetSuperheatF: number | null = null;
 
   const shBase = `Superheat ${fmt(superheatF)} F (suction line ${fmt(suctionLineF.value)} F, dew point ${fmt(dew.tempF)} F at ${fmt(suctionPsig.value, 0)} psig).`;

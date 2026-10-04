@@ -28,7 +28,7 @@ export default function ExplanationPanel({ input, issues, safetyPresent }: { inp
       {input && (
         <details>
           <summary style={{ cursor: "pointer", fontWeight: 650, minHeight: 44, display: "flex", alignItems: "center" }}>What will be sent</summary>
-          <pre className="hint" style={{ whiteSpace: "pre-wrap", margin: 0, fontFamily: "inherit" }}>{JSON.stringify(input, null, 2)}</pre>
+          <pre className="hint" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: 0, fontFamily: "inherit" }}>{JSON.stringify(input, null, 2)}</pre>
         </details>
       )}
       <div className="btnRow" style={{ marginTop: 0 }}>

@@ -14,7 +14,7 @@ Release work:
 - Tests, browser smoke, independent review, actual live text generation and production SHA verification.
 
 Not invented/approved by coding work:
-- Provisional CoolProp pressure-temperature tables remain labeled provisional. Manufacturer charts govern actual charging.
+- Published manufacturer/supplier pressure-temperature chart imports remain provisional, with technical approval pending. Selected source provenance is visible and persisted; manufacturer charging charts/targets still govern actual charging. See `scripts/pt-sources/README.md`.
 - Company CO threshold not set without approved procedure and measurement context. No inference that an unclassified CO value means safe.
 - Fixed-orifice formula and house screening tolerances remain screening guidance, not manufacturer specifications.
 - DFW climate presets explicitly limited to supported locations/custom input.

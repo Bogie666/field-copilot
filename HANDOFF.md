@@ -1,6 +1,6 @@
 # Handoff
 
-State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings and late-response note protection. Lint, typecheck, 283 unit tests across 38 files and the production build pass.
+State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings, late-response note protection and published PT calculations/provenance in both themes. Lint, typecheck, 299 unit tests across 41 files and the production build pass. Independent chart verification passed 1,746 source points, 1,738 interval midpoints and 40 range/nonfinite rejection checks.
 
 ## Release hardening
 
@@ -14,7 +14,7 @@ State: all four tiles and every tool pass the end-to-end browser smoke. The base
 
 ## Open decisions (need an owner)
 
-1. **Pressure-temperature data is PROVISIONAL.** Generated from CoolProp 8.0.0 by `scripts/generate-pt-data.py` (R-410A, R-32, R-454B, R-22). `PT_DATA_APPROVED` in `app/lib/charge/ptData.ts` is `false` and the charge tool shows a warning. Approve a source (manufacturer or AHRI tables), compare, then flip the flag. R-454B tops out near 462 psig.
+1. **Pressure-temperature data is PROVISIONAL; technical approval pending.** Published Honeywell (R-410A/R-22), iGas USA (R-32), and Chemours Opteon XL41 (R-454B) chart rows now replace CoolProp estimates. `PT_DATA_APPROVED` remains `false`; source warnings and selected chart provenance persist in saved findings/AI fields. See `scripts/pt-sources/README.md` for exact sources, extraction, hashes and deterministic regeneration. R-454B retains direct chart points through 400 psig, then independent same-source inverse-chart extensions to 728.9 bubble / 723.1 dew psig (charge form input ceiling remains 700). Historical source calculations require explicit Update finding; they are not silently rewritten. Independent technical review is still required before approval.
 2. **Furnace CO threshold.** `FURNACE_SAFETY_CONFIG.coThresholdPpm` is `null`, so CO is recorded but not classified. Set a company threshold and wording. Ticked observations always take the safety path.
 3. **Fixed-orifice superheat target.** Uses (3 x IWB - 80 - ODB) / 2, valid only for outdoor dry bulb 55 to 115 F and indoor wet bulb 57 to 76 F. Confirm or replace.
 4. **House tolerances** for electrical, static and airflow screening bands.

@@ -1,7 +1,7 @@
 "use client";
 
 import { assessCharge, EMPTY_CHARGE, ORIFICE_FORMULA_LABEL, type ChargeInput } from "../../lib/charge/refrigerantCharge";
-import { PT_DATA_APPROVED, PT_DATA_SOURCE, ptRefrigerants } from "../../lib/charge/ptData";
+import { PT_DATA_APPROVED, ptSourceReference, ptRefrigerants } from "../../lib/charge/ptData";
 import { fmt } from "../../lib/tools/numbers";
 import { hashInputs } from "../../lib/job/types";
 import { Callout, ErrorList, NumberField, Plate, ResultCard, SelectField } from "../ui";
@@ -20,6 +20,7 @@ export default function ChargeTool({ ctx }: { ctx: ToolContext }) {
   const { errors, result } = assessCharge(form);
   const touched = !!(form.suctionPsig || form.suctionLineF || form.liquidPsig || form.liquidLineF);
   const orifice = form.device === "orifice";
+  const findingInputs = { ...form, ptSource: ptSourceReference(form.refrigerant) };
 
   const built: BuiltFinding | null =
     result && touched
@@ -29,7 +30,7 @@ export default function ChargeTool({ ctx }: { ctx: ToolContext }) {
           diagnosis: result.diagnosis,
           readings: result.readings,
           reference: result.reference + (suggestion && form.refrigerant === suggestion ? " Refrigerant taken from the confirmed nameplate." : ""),
-          inputs: { ...form },
+          inputs: findingInputs,
         }
       : null;
 
@@ -37,7 +38,8 @@ export default function ChargeTool({ ctx }: { ctx: ToolContext }) {
     <div className="stack">
       {!PT_DATA_APPROVED && (
         <Callout tone="warn" title="Provisional pressure-temperature data">
-          <p>Saturation temperatures come from {PT_DATA_SOURCE}, not a manufacturer chart. Check a reading against your gauge set or the manufacturer chart before relying on it.</p>
+          <p>Manufacturer/supplier published sources; technical approval pending. These comparisons remain provisional and not approved. Check a reading against your gauge set or the manufacturer chart before relying on it.</p>
+          <p>{ptSourceReference(form.refrigerant)}</p>
         </Callout>
       )}
       <div className="panel">
@@ -98,7 +100,7 @@ export default function ChargeTool({ ctx }: { ctx: ToolContext }) {
           <p className="hint">This compares readings with a target. It does not say why they differ.</p>
         </ResultCard>
       )}
-      <SaveFinding ctx={ctx} built={built} hash={hashInputs(form)} />
+      <SaveFinding ctx={ctx} built={built} hash={hashInputs(findingInputs)} />
     </div>
   );
 }

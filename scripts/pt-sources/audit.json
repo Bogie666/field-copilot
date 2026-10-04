@@ -1,0 +1,65 @@
+{
+  "fixtureSha256": "dd79030727602ac370b3e176a58690fa4eaaa8c8ca777e9eabbbce5895d133bf",
+  "tables": [
+    {
+      "id": "R-410A",
+      "rowCount": 191,
+      "bubbleRowCount": 191,
+      "dewRowCount": 191,
+      "bubbleMaxPsig": 611.9,
+      "dewMaxPsig": 611.9,
+      "dataSha256": "42361cd64a46013e80cedd0f4bf70a3714a450d9dc41ef991c929dd0dc709d22",
+      "pressureRangePsig": [
+        10.8,
+        611.9
+      ],
+      "rowsSha256": "bd1f72399737feb6e06c452206d9ca1c1b6995fa8020e670d2365145a33d8ac7",
+      "pdfSha256": "ae845948a1b37de2f31e5c05f63852466f851a71da80800c8083d730ca805778"
+    },
+    {
+      "id": "R-32",
+      "rowCount": 39,
+      "bubbleRowCount": 39,
+      "dewRowCount": 39,
+      "bubbleMaxPsig": 628.8,
+      "dewMaxPsig": 628.8,
+      "dataSha256": "bad8efd2b5dcd2b9fb72c53725e3616ac102a790ea9fe1028fb07311b69914d8",
+      "pressureRangePsig": [
+        11.0,
+        628.8
+      ],
+      "rowsSha256": "8d0b89de855c2269f3192f22d7512a0e2805b6a32d4499fe84ec20b14c6096ea",
+      "pdfSha256": "ab3956dbb78260eacd058eeba528f8bd2d99f4502e06e744ab87c364d2ec41a3"
+    },
+    {
+      "id": "R-454B",
+      "rowCount": 403,
+      "bubbleRowCount": 453,
+      "dewRowCount": 451,
+      "bubbleMaxPsig": 728.9,
+      "dewMaxPsig": 723.1,
+      "dataSha256": "f6903e07966e2881f722a8fcd9783ca0ae0acfb1852a123b477a87922497c4fa",
+      "pressureRangePsig": [
+        -2.0,
+        400.0
+      ],
+      "rowsSha256": "3415ed8ecbf101481d4329fb3b2cb76d2b58d75e7ca244480d4c9f037ef14120",
+      "pdfSha256": "979d7bc449a7ae96cb93bb46ee628a91c723f55f76a3fcc431fdcd1be50823d9"
+    },
+    {
+      "id": "R-22",
+      "rowCount": 191,
+      "bubbleRowCount": 191,
+      "dewRowCount": 191,
+      "bubbleMaxPsig": 381.7,
+      "dewMaxPsig": 381.7,
+      "dataSha256": "0878c7b46661ffa9933f397b5360eb4cb046e17ba3d80f719463a4cae3da8fe6",
+      "pressureRangePsig": [
+        0.6,
+        381.7
+      ],
+      "rowsSha256": "3fac0d327b83913ba696b4cda00c44ae69a78e190f36662a671af77c7276d0c4",
+      "pdfSha256": "ae845948a1b37de2f31e5c05f63852466f851a71da80800c8083d730ca805778"
+    }
+  ]
+}

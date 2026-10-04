@@ -22,7 +22,16 @@ COPILOT_URL=http://127.0.0.1:3000 npm run smoke
 COPILOT_URL=http://127.0.0.1:3000 npm run smoke:regressions
 ```
 
-Set `CHROMIUM_PATH` to your installed Chromium binary. The regressions cover drafts/stale findings, late-response note protection, camera OCR and photo annotation with storage failure/retry. OCR requires initial engine/language asset downloads; paid image analysis is not used.
+Set `CHROMIUM_PATH` to your installed Chromium binary. The regressions cover drafts/stale findings, late-response note protection, camera OCR, photo annotation with storage failure/retry, and published PT lookups with saved/AI provenance in both themes. OCR requires initial engine/language asset downloads; paid image analysis is not used.
+
+## Published refrigerant references
+
+Pressure-temperature lookups now use Honeywell chart rows for R-410A/R-22, iGas USA for R-32, and Chemours Opteon XL41 for R-454B. R-454B retains separate liquid/bubble and vapor/dew curves, including the same-source high-pressure extension. Lookups interpolate between actual pressure knots and reject values beyond the published range; they never extrapolate.
+
+`PT_DATA_APPROVED` remains `false`: published numerical data is not company approval of a charging procedure or a substitute for equipment-specific targets. Saved findings retain the source and data revision. Historical calculations are not silently rewritten; explicitly update a finding to use the new references.
+
+See [`scripts/pt-sources/README.md`](scripts/pt-sources/README.md) for source URLs, ranges, extraction notes and hashes. Reproduce/check the saved data with `python3 scripts/generate-pt-data.py --check`; run the focused browser regression with `npm run smoke:pt`.
+
 
 ## OpenRouter test deployment
 

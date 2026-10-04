@@ -1,5 +1,71 @@
 import { describe, expect, it } from "vitest";
-import { maxPsig, ptRefrigerants, PT_TABLES, saturationTempF } from "./ptData";
+import { maxPsig, ptRefrigerants, ptSourceReference, PT_TABLES, saturationTempF, type PtTable } from "./ptData";
+import { assessCharge, EMPTY_CHARGE } from "./refrigerantCharge";
+
+const sourceBearingUniform: PtTable = {
+  id: "VALID",
+  safetyClass: "A1",
+  startPsig: 10,
+  stepPsig: 10,
+  bubbleF: [30, 40],
+  dewF: [32, 42],
+  source: PT_TABLES[0].source,
+};
+
+const mixedAxes: PtTable = {
+  id: "MIXED",
+  safetyClass: "A1",
+  dewPressurePsig: [10, 20, 30],
+  dewF: [30, 40, 50],
+  bubbleF: [32, 42],
+  startPsig: 10,
+  stepPsig: 10,
+};
+
+describe("mixed explicit and implicit phase axes", () => {
+  it("uses the bubble column length for its implicit maximum", () => {
+    expect(maxPsig(mixedAxes, "dew")).toBe(30);
+    expect(maxPsig(mixedAxes, "bubble")).toBe(20);
+  });
+
+  it("rejects bubble pressures beyond its endpoint instead of succeeding with NaN", () => {
+    for (const pressure of [10, 15, 20]) {
+      const result = saturationTempF("MIXED", pressure, "bubble", [mixedAxes]);
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(Number.isFinite(result.tempF)).toBe(true);
+    }
+    expect(saturationTempF("MIXED", 15, "bubble", [mixedAxes])).toEqual({ ok: true, tempF: 37 });
+    expect(saturationTempF("MIXED", 25, "dew", [mixedAxes])).toEqual({ ok: true, tempF: 45 });
+    expect(saturationTempF("MIXED", 25, "bubble", [mixedAxes])).toEqual({
+      ok: false,
+      error: "25 psig is outside the MIXED table (10 to 20 psig). Check the gauge reading.",
+    });
+  });
+});
+
+describe("source-bearing legacy uniform PT tables", () => {
+  it("references uniform phase ranges without an explicit pressure axis", () => {
+    expect(saturationTempF("VALID", 15, "dew", [sourceBearingUniform])).toEqual({ ok: true, tempF: 37 });
+    const reference = ptSourceReference("VALID", [sourceBearingUniform]);
+    expect(reference).toContain("bubble range 10 to 20 psig; dew range 10 to 20 psig");
+    expect(reference).toContain(sourceBearingUniform.source!.dataSha256);
+  });
+
+  it("assesses a source-bearing uniform table without throwing", () => {
+    const assessment = assessCharge({
+      ...EMPTY_CHARGE,
+      refrigerant: "VALID",
+      device: "txv",
+      suctionPsig: "15",
+      suctionLineF: "47",
+      liquidPsig: "15",
+      liquidLineF: "25",
+    }, [sourceBearingUniform]);
+    expect(assessment.errors).toEqual([]);
+    expect(assessment.result).toMatchObject({ suctionSatF: 37, liquidSatF: 35, superheatF: 10, subcoolingF: 10 });
+    expect(assessment.result!.reference).toContain("bubble range 10 to 20 psig; dew range 10 to 20 psig");
+  });
+});
 
 describe("generated PT data", () => {
   it("includes the expected refrigerants", () => {
@@ -26,11 +92,17 @@ describe("generated PT data", () => {
 
   it("temperature rises with pressure in every table", () => {
     for (const table of PT_TABLES) {
-      for (let i = 1; i < table.dewF.length; i += 1) {
-        expect(table.dewF[i]).toBeGreaterThan(table.dewF[i - 1]);
-        expect(table.bubbleF[i]).toBeGreaterThan(table.bubbleF[i - 1]);
+      for (const phase of ["dew", "bubble"] as const) {
+        const values = phase === "dew" ? table.dewF : table.bubbleF;
+        const pressures = (phase === "dew" ? table.dewPressurePsig : table.bubblePressurePsig) ?? table.pressurePsig!;
+        expect(pressures.length).toBe(values.length);
+        for (let i = 1; i < values.length; i += 1) {
+          expect(pressures[i]).toBeGreaterThan(pressures[i - 1]);
+          // Rounded direct 400 psig / inverse 400.1 psig dew both publish 123.0 F.
+          if (table.id === "R-454B" && phase === "dew" && pressures[i] === 400.1) expect(values[i]).toBe(values[i - 1]);
+          else expect(values[i]).toBeGreaterThan(values[i - 1]);
+        }
       }
-      expect(table.bubbleF.length).toBe(table.dewF.length);
     }
   });
 
