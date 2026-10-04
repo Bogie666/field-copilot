@@ -3,6 +3,9 @@
 import type { ComponentType } from "react";
 import type { ToolId } from "../../lib/job/registry";
 import type { ToolContext } from "./context";
+import AirflowTool from "./AirflowTool";
+import DuctTool from "./DuctTool";
+import LoadScreeningTool from "./LoadScreeningTool";
 import ChargeTool from "./ChargeTool";
 import ElectricalTool from "./ElectricalTool";
 import FurnaceTool from "./FurnaceTool";
@@ -15,6 +18,9 @@ const REGISTRY: Partial<Record<ToolId, ToolComponent>> = {
   charge: ChargeTool,
   furnace: FurnaceTool,
   static: StaticTool,
+  airflow: AirflowTool,
+  duct: DuctTool,
+  load: LoadScreeningTool,
 };
 
 export function ToolHost({ ctx }: { ctx: ToolContext }) {

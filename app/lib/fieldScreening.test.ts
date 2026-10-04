@@ -35,3 +35,23 @@ describe("field screening helpers", () => {
     expect(summary).toContain("Comparison notes: After repair");
   });
 });
+
+import { airflowBandState, ductVelocityState } from "./fieldScreening";
+
+describe("band states", () => {
+  it("classifies airflow per ton by mode", () => {
+    expect(airflowBandState(349, "cooling")).toBe("below");
+    expect(airflowBandState(350, "cooling")).toBe("within");
+    expect(airflowBandState(450, "cooling")).toBe("within");
+    expect(airflowBandState(451, "cooling")).toBe("above");
+    expect(airflowBandState(330, "heating")).toBe("within");
+    expect(airflowBandState(0, "cooling")).toBe("none");
+  });
+
+  it("classifies duct velocity by context", () => {
+    expect(ductVelocityState({ side: "supply", section: "trunk" }, 699)).toBe("below");
+    expect(ductVelocityState({ side: "supply", section: "trunk" }, 1000)).toBe("within");
+    expect(ductVelocityState({ side: "return", section: "branch" }, 701)).toBe("above");
+    expect(ductVelocityState({ side: "return", section: "branch" }, Number.NaN)).toBe("none");
+  });
+});

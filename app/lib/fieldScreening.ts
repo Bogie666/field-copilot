@@ -21,10 +21,24 @@ export function airflowBand(cfmPerTon: number, mode: OperatingMode): string {
   return `Within the ${low}-${high} CFM/ton ${mode} screening band. Confirm against manufacturer data and job conditions.`;
 }
 
+export type BandState = "below" | "within" | "above" | "none";
+
+export function airflowBandState(cfmPerTon: number, mode: OperatingMode): BandState {
+  if (!Number.isFinite(cfmPerTon) || cfmPerTon <= 0) return "none";
+  const [low, high] = mode === "cooling" ? [350, 450] : [325, 450];
+  return cfmPerTon < low ? "below" : cfmPerTon > high ? "above" : "within";
+}
+
 const guidance: Record<string, [number, number]> = {
   "supply-trunk": [700, 1000], "supply-branch": [500, 800],
   "return-trunk": [500, 800], "return-branch": [400, 700],
 };
+export function ductVelocityState(context: DuctContext, velocity: number): BandState {
+  const [low, high] = guidance[`${context.side}-${context.section}`];
+  if (!Number.isFinite(velocity) || velocity <= 0) return "none";
+  return velocity < low ? "below" : velocity > high ? "above" : "within";
+}
+
 export function ductVelocityGuidance(context: DuctContext, velocity: number): string {
   const [low, high] = guidance[`${context.side}-${context.section}`];
   const label = `${context.side} ${context.section}`;
