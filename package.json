@@ -1,0 +1,35 @@
+{
+  "name": "field-copilot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Job-centric field copilot for HVAC technicians. Brand-neutral and configurable per brand.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke.cjs",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "dependencies": {
+    "@fontsource-variable/archivo": "^5.2.0",
+    "next": "^16.2.6",
+    "openai": "4.56.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "tesseract.js": "5.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "^16.2.6",
+    "fake-indexeddb": "^6.0.0",
+    "playwright-core": "^1.50.0",
+    "typescript": "5.5.4",
+    "vitest": "^4.1.7"
+  }
+}
