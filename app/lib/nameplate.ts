@@ -106,25 +106,95 @@ function cleanCandidate(value: string): string {
     .toUpperCase();
 }
 
+const MODEL_LABEL = /(?:\bM[O0]DEL\b|\bMOD(?:EL)?\b|\bMDL\b|\bM\s*[/.]\s*N\b)/i;
+const SERIAL_LABEL = /(?:\bSER[I1L]AL\b|\bSER\b|\bS\s*[/.]\s*N\b)/i;
+const IDENTIFIER_STOP_TOKEN = /^(?:MODEL|M0DEL|MOD|MDL|SERIAL|SERLAL|SER1AL|SER|REFRIGERANT|REFRIG|VOLTAGE|VOLTS?|V|VAC|PHASE|PH|HZ|HERTZ|MCA|MOCP|RLA|LRA|CAPACITY|BTU|BTUH|DATE|MFG|MFD|MAX|MAXIMUM|FUSE|BREAKER|BKR|AMPS?|CKT|CIRCUIT)$/i;
+const RATING_VALUE_TOKEN = /^(?:(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:[/-](?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?(?:V(?:AC)?|VOLTS?)?|[13](?:PH|PHASE)|(?:50|60)(?:HZ|HERTZ)|\d+\.\d+(?:A|AMPS?)?|\d+(?:\.\d+)?(?:AMPS?|BTUH?|MBH|TONS?))$/i;
+
+function identifierCandidate(text: string): string {
+  const cleaned = text
+    .replace(/^\s*(?:(?:N[O0]\.?|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
+    .trim();
+  if (!cleaned) return "";
+
+  const tokens = cleaned.match(/[A-Z0-9][A-Z0-9/_.-]*/gi) || [];
+  const chunks: string[] = [];
+  for (const token of tokens) {
+    if (IDENTIFIER_STOP_TOKEN.test(token) || RATING_VALUE_TOKEN.test(token) || (chunks.length > 0 && /^\d{1,3}A$/i.test(token))) break;
+    if (/^(?:N[O0]|NUMBER|NUM)$/i.test(token) && chunks.length === 0) continue;
+    if (!/^[A-Z0-9][A-Z0-9/_.-]*$/i.test(token)) break;
+    if (!/\d/.test(token) && token.length > 3) break;
+    if (!/\d/.test(token) && chunks.length > 0 && token.length > 1) break;
+    chunks.push(token);
+    if (chunks.join("").length >= 32 || chunks.length >= 5) break;
+  }
+
+  const candidate = cleanCandidate(chunks.join(""));
+  if (candidate.length < 4 || candidate.length > 40 || !/\d/.test(candidate) || RATING_VALUE_TOKEN.test(candidate)) return "";
+  return candidate;
+}
+
+function pairedIdentifiers(lines: string[]): { model?: { value: string; line: string; confidence: number }; serial?: { value: string; line: string; confidence: number } } {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const modelMatch = MODEL_LABEL.exec(line);
+    const serialMatch = SERIAL_LABEL.exec(line);
+    if (!modelMatch || !serialMatch) continue;
+
+    const modelFirst = modelMatch.index < serialMatch.index;
+    const first = modelFirst ? modelMatch : serialMatch;
+    const second = modelFirst ? serialMatch : modelMatch;
+    const firstValue = identifierCandidate(line.slice(first.index + first[0].length, second.index));
+    const secondValue = identifierCandidate(line.slice(second.index + second[0].length));
+    if (firstValue || secondValue) {
+      return modelFirst
+        ? {
+            ...(firstValue ? { model: { value: firstValue, line, confidence: 0.94 } } : {}),
+            ...(secondValue ? { serial: { value: secondValue, line, confidence: 0.94 } } : {}),
+          }
+        : {
+            ...(secondValue ? { model: { value: secondValue, line, confidence: 0.94 } } : {}),
+            ...(firstValue ? { serial: { value: firstValue, line, confidence: 0.94 } } : {}),
+          };
+    }
+
+    const nextLine = lines[index + 1] || "";
+    const values = (nextLine.match(/[A-Z0-9][A-Z0-9/_.-]{3,}/gi) || [])
+      .map(cleanCandidate)
+      .filter((value) => /\d/.test(value) && !IDENTIFIER_STOP_TOKEN.test(value) && !RATING_VALUE_TOKEN.test(value));
+    if (values.length >= 2) {
+      return modelFirst
+        ? {
+            model: { value: values[0], line: `${line} ${nextLine}`, confidence: 0.78 },
+            serial: { value: values[1], line: `${line} ${nextLine}`, confidence: 0.78 },
+          }
+        : {
+            serial: { value: values[0], line: `${line} ${nextLine}`, confidence: 0.78 },
+            model: { value: values[1], line: `${line} ${nextLine}`, confidence: 0.78 },
+          };
+    }
+  }
+  return {};
+}
+
 function labeledValue(
   lines: string[],
   label: RegExp,
-  value: RegExp = /([A-Z0-9][A-Z0-9/_.-]{3,})/i,
 ): { value: string; line: string; confidence: number } | null {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
-    const direct = line.match(new RegExp(`${label.source}\\s*(?:NO\\.?|NUMBER)?\\s*[:#=.-]?\\s*${value.source}`, "i"));
-    if (direct?.[1]) {
-      return { value: cleanCandidate(direct[1]), line, confidence: 0.94 };
-    }
+    if (MODEL_LABEL.test(line) && SERIAL_LABEL.test(line)) continue;
+    const match = new RegExp(label.source, "i").exec(line);
+    if (!match) continue;
 
-    if (new RegExp(`^\\s*${label.source}\\s*(?:NO\\.?|NUMBER)?\\s*[:#=.-]?\\s*$`, "i").test(line)) {
-      const nextLine = lines[index + 1] || "";
-      const next = nextLine.match(new RegExp(`^\\s*${value.source}`, "i"));
-      const candidate = next?.[1] ? cleanCandidate(next[1]) : "";
-      if (candidate && !/^(?:MODEL|MOD|MDL|SERIAL|SER|VOLTAGE|PHASE|REFRIGERANT|MCA|MOCP)$/i.test(candidate)) {
-        return { value: candidate, line: `${line} ${nextLine}`, confidence: 0.72 };
-      }
+    const candidate = identifierCandidate(line.slice(match.index + match[0].length));
+    if (candidate) return { value: candidate, line, confidence: 0.94 };
+
+    const nextLine = lines[index + 1] || "";
+    const nextCandidate = identifierCandidate(nextLine);
+    const nextHasLabel = MODEL_LABEL.test(nextLine) || SERIAL_LABEL.test(nextLine) || IDENTIFIER_STOP_TOKEN.test(nextLine.split(/\s+/)[0] || "");
+    if (nextCandidate && !nextHasLabel) {
+      return { value: nextCandidate, line: `${line} ${nextLine}`, confidence: 0.72 };
     }
   }
   return null;
@@ -151,6 +221,7 @@ function fallbackModel(lines: string[]): { value: string; line: string; confiden
     const tokens = line.toUpperCase().match(/\b[A-Z0-9][A-Z0-9/_.-]{5,24}\b/g) || [];
     for (const token of tokens) {
       if (REJECTED_FALLBACK_TOKENS.test(token)) continue;
+      if (RATING_VALUE_TOKEN.test(token)) continue;
       if (/^\d+(?:\.\d+)?$/.test(token)) continue;
       if (!/[A-Z]/.test(token) || !/\d/.test(token)) continue;
       if (/^(?:208|230|240|460|480)[/-]/.test(token)) continue;
@@ -207,13 +278,19 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
     }
   }
 
-  const model = labeledValue(lines, /(?:MODEL|MOD|MDL|M\s*[/.]\s*N)/i);
-  const serial = labeledValue(lines, /(?:SERIAL|SER|S\s*[/.]\s*N)/i);
-  const modelCandidate = model || fallbackModel(lines);
+  const paired = pairedIdentifiers(lines);
+  const model = paired.model || labeledValue(lines, MODEL_LABEL);
+  const serial = paired.serial || labeledValue(lines, SERIAL_LABEL);
+  const hasModelLabel = lines.some((line) => MODEL_LABEL.test(line));
+  const modelCandidate = model || (hasModelLabel ? null : fallbackModel(lines));
   if (modelCandidate) setResult(extraction, "model", modelCandidate.value, modelCandidate.confidence, modelCandidate.line);
   if (serial) setResult(extraction, "serial", serial.value, serial.confidence, serial.line);
 
-  const refrigerant = firstPattern(lines, /\bR\s*[- ]?\s*(22|32|1234YF|134A|404A|407A|407C|410A|454B|507A)\b/i, (match) => `R-${match[1].toUpperCase()}`);
+  const refrigerant = firstPattern(
+    lines,
+    /\bR\s*[- ]?\s*(22|32|1234\s*YF|134\s*A|404\s*A|407\s*A|407\s*C|410\s*A|454\s*B|507\s*A)\b/i,
+    (match) => `R-${match[1].replace(/\s/g, "").toUpperCase()}`,
+  );
   if (refrigerant) setResult(extraction, "refrigerant", refrigerant.value, 0.96, refrigerant.line);
 
   const voltage = firstPattern(

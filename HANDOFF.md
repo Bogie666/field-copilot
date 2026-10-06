@@ -1,6 +1,6 @@
 # Handoff
 
-State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings, late-response note protection and published PT calculations/provenance in both themes. Lint, typecheck, 299 unit tests across 41 files and the production build pass. Independent chart verification passed 1,746 source points, 1,738 interval midpoints and 40 range/nonfinite rejection checks.
+State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings, late-response note protection and published PT calculations/provenance in both themes. Lint, typecheck, 312 unit tests across 41 files and the production build pass. Independent chart verification passed 1,746 source points, 1,738 interval midpoints and 40 range/nonfinite rejection checks.
 
 ## Release hardening
 
@@ -24,7 +24,7 @@ State: all four tiles and every tool pass the end-to-end browser smoke. The base
 
 ## Not done or limited
 
-- Nameplate: camera/gallery capture with on-device Tesseract OCR, manual entry and paste parsing. OCR fills only untouched empty fields, and every value requires technician confirmation. The first device scan downloads OCR assets. Paid vision remains off.
+- Nameplate: camera/gallery capture with on-device Tesseract OCR, manual entry and paste parsing. Photos are auto-leveled, enlarged when useful and scanned as both grayscale/block text and high-contrast/sparse text; technicians can rotate a plate before scanning. OCR fills only untouched empty fields. Conflicting readings between passes are left blank, common compact HVAC ratings are excluded from model/serial values, and every value requires technician confirmation. The first device scan downloads OCR assets. Paid vision remains off.
 - Photos: arrow/circle/freehand/text annotation with undo, cancel and explicit save. Markup is flattened into the saved photo; the same photo ID and safety attachments are retained.
 - Notes: text per system/home, browser dictation, explicit AI tidying with cancellation/stale-edit protection. Manual changes dispatch immediately to avoid a debounce loss window. Browser speech support varies; automatic recognition restart is not implemented.
 - No cloud sync. Jobs live in IndexedDB on one device. No offline app shell or service worker.

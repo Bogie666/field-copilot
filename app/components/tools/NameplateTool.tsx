@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { prepareNameplateImage, type PreparedNameplateImage } from "../../lib/nameplateImage";
 import { EMPTY_NAMEPLATE_FIELDS, NAMEPLATE_FIELD_KEYS, type NameplateFieldKey } from "../../lib/nameplate";
-import { readDeviceNameplate, fillNameplateBlanks } from "../../lib/nameplateScan";
+import { readDeviceNameplate, fillNameplateBlanks, fillNameplateBlanksFromOcr } from "../../lib/nameplateScan";
 import { Callout, TextField } from "../ui";
 import { ActionBar } from "../ui";
 import type { ToolContext } from "./context";
@@ -32,6 +32,8 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
   const [progress, setProgress] = useState(0);
   const camera = useRef<HTMLInputElement>(null);
   const gallery = useRef<HTMLInputElement>(null);
+  const selectedFile = useRef<File | null>(null);
+  const [rotation, setRotation] = useState(0);
   useEffect(() => () => { request.current++; controller.current?.abort(); }, []);
 
   function cancel() {
@@ -45,15 +47,22 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
     const abort = new AbortController(); controller.current = abort;
     setBusy(true); setError(""); setScanStatus("Loading device OCR…"); setProgress(0);
     try {
-      const text = await readDeviceNameplate(prepared.enhancedDataUrl, abort.signal, (status, amount) => {
+      const result = await readDeviceNameplate(prepared.ocrDataUrls, abort.signal, (status, amount) => {
         if (id !== request.current) return;
         setScanStatus(`Device OCR: ${status}`); setProgress(amount);
       });
       if (id !== request.current) return;
-      setPaste(text);
-      setFields(c => fillNameplateBlanks(c, text, edited.current));
+      setPaste(result.text);
+      const reconciled = fillNameplateBlanksFromOcr(fields, result.passes, edited.current);
+      setFields((current) => fillNameplateBlanksFromOcr(current, result.passes, edited.current).fields);
       setSaved(false);
-      setScanStatus(text.trim() ? "Scan complete. Check every field against the photo before saving." : "No readable text. Retake the photo or enter the plate manually.");
+      setScanStatus(
+        result.text.trim()
+          ? reconciled.conflicts.length
+            ? `Scan complete. Conflicting ${reconciled.conflicts.map((key) => LABELS[key as Key] || key).join(", ")} readings were left blank. Check every field against the photo.`
+            : "Scan complete. Check every field against the photo before saving."
+          : "No readable text. Retake the photo or enter the plate manually.",
+      );
     } catch (e) {
       if (id === request.current) setError(e instanceof Error ? `${e.message} Try a clearer photo or manual entry.` : "Device OCR failed. Use manual entry.");
     } finally {
@@ -63,6 +72,8 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
 
   async function choose(file: File | undefined) {
     if (!file) return;
+    selectedFile.current = file;
+    setRotation(0);
     controller.current?.abort();
     const id = ++request.current;
     setBusy(true); setError(""); setPrepared(null); setScanStatus("");
@@ -71,6 +82,27 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
       if (id === request.current) setPrepared(image);
     } catch (e) {
       if (id === request.current) setError(e instanceof Error ? e.message : "Could not open this photo.");
+    } finally {
+      if (id === request.current) setBusy(false);
+    }
+  }
+
+  async function rotate(delta: -90 | 90) {
+    const file = selectedFile.current;
+    if (!file || busy) return;
+    controller.current?.abort();
+    const id = ++request.current;
+    const nextRotation = (rotation + delta + 360) % 360;
+    setBusy(true); setError(""); setScanStatus("Rotating and optimizing photo…");
+    try {
+      const image = await prepareNameplateImage(file, nextRotation);
+      if (id === request.current) {
+        setPrepared(image);
+        setRotation(nextRotation);
+        setScanStatus("Photo rotated. Run the scan again.");
+      }
+    } catch (e) {
+      if (id === request.current) setError(e instanceof Error ? e.message : "Could not rotate this photo.");
     } finally {
       if (id === request.current) setBusy(false);
     }
@@ -98,16 +130,20 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
       <Callout title="You confirm every field">Type the values from the plate. Nothing is read from a serial number. Age is whatever you enter, and blank means unknown.</Callout>
       <div className="panel">
         <h3>Camera and device OCR</h3>
-        <p className="hint">Fill the frame with a sharp, glare-free plate. Device OCR keeps the photo in this browser; no paid vision is used. The first scan may download OCR language files.</p>
+        <p className="hint">Fill the frame with a sharp, glare-free plate. The scanner enlarges small text and checks both grayscale and high-contrast versions on this device. The first scan may download OCR language files.</p>
         <input ref={camera} className="visuallyHidden" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" aria-label="Take a nameplate photo" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
         <input ref={gallery} className="visuallyHidden" type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose a nameplate photo" onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ""; }} />
-        <div className="pillrow">
+        <div className="btnRow">
           <button className="btn" type="button" onClick={() => camera.current?.click()}>Take plate photo</button>
           <button className="btn" type="button" onClick={() => gallery.current?.click()}>Choose plate photo</button>
         </div>
         {prepared && <>
           <img src={prepared.colorDataUrl} alt="Selected equipment nameplate" style={{ width: "100%", height: "auto" }} />
-          <button className="btn" type="button" disabled={busy} onClick={() => void scan()}>Read on device</button>
+          <div className="btnRow">
+            <button className="btn" type="button" disabled={busy} onClick={() => void rotate(-90)}>Rotate left</button>
+            <button className="btn" type="button" disabled={busy} onClick={() => void rotate(90)}>Rotate right</button>
+            <button className="btn primary" type="button" disabled={busy} onClick={() => void scan()}>Read nameplate</button>
+          </div>
         </>}
         {busy && <>
           <progress max={1} value={progress} aria-label="Device OCR progress" />

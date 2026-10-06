@@ -64,6 +64,96 @@ describe("parseNameplateText", () => {
     expect(result.fields.maxFuseBreaker).toBe("20 A");
   });
 
+  it("recovers identifiers when OCR confuses letters in the labels", () => {
+    const result = parseNameplateText(`
+      CARRIER CORPORATION
+      M0DEL N0: 24ACC636A003
+      SERlAL N0: 1923E12345
+      REFRIGERANT R 410 A
+      208 / 230 V 1 PH 60 HZ
+    `);
+
+    expect(result.fields.model).toBe("24ACC636A003");
+    expect(result.fields.serial).toBe("1923E12345");
+    expect(result.fields.refrigerant).toBe("R-410A");
+    expect(result.fields.voltage).toBe("208/230 V");
+  });
+
+  it("joins an identifier split into chunks by OCR", () => {
+    const result = parseNameplateText(`
+      LENNOX
+      MODEL NO. ML17XC1 036 230A01
+      SERIAL NO. 5823 D 12345
+    `);
+
+    expect(result.fields.model).toBe("ML17XC1036230A01");
+    expect(result.fields.serial).toBe("5823D12345");
+  });
+
+  it("maps model and serial values printed below paired table headings", () => {
+    const result = parseNameplateText(`
+      AMERICAN STANDARD
+      MODEL NUMBER        SERIAL NUMBER
+      4A7A6036N1000A      23145AB7F
+      208/230 VAC 1 PH 60 HZ
+    `);
+
+    expect(result.fields.model).toBe("4A7A6036N1000A");
+    expect(result.fields.serial).toBe("23145AB7F");
+  });
+
+  it("extracts identifiers when both labels and values share one OCR line", () => {
+    const result = parseNameplateText("MODEL: GSXN403610 SERIAL: 2404123456");
+
+    expect(result.fields.model).toBe("GSXN403610");
+    expect(result.fields.serial).toBe("2404123456");
+  });
+
+  it("stops identifiers before ratings on the same OCR line", () => {
+    const result = parseNameplateText(`
+      MODEL: 24ACC636A003 208/230 V 1 PH 60 HZ
+      SERIAL: 1923E12345 MAX FUSE 30 AMPS
+    `);
+
+    expect(result.fields.model).toBe("24ACC636A003");
+    expect(result.fields.serial).toBe("1923E12345");
+  });
+
+  it("does not treat electrical ratings below missing identifiers as identifiers", () => {
+    const spaced = parseNameplateText(`
+      MODEL NUMBER        SERIAL NUMBER
+      208/230 VAC 1 PH 60 HZ
+    `);
+    const compact = parseNameplateText(`
+      MODEL NUMBER        SERIAL NUMBER
+      208/230VAC 1PH 60HZ
+    `);
+    const compactSingleVoltage = parseNameplateText(`
+      MODEL NUMBER        SERIAL NUMBER
+      208VAC 1PH 60HZ
+    `);
+
+    expect(spaced.fields.model).toBe("");
+    expect(spaced.fields.serial).toBe("");
+    expect(compact.fields.model).toBe("");
+    expect(compact.fields.serial).toBe("");
+    expect(compactSingleVoltage.fields.model).toBe("");
+    expect(compactSingleVoltage.fields.serial).toBe("");
+  });
+
+  it("stops identifiers before compact amp ratings without rejecting an identifier ending in A", () => {
+    const result = parseNameplateText("MODEL: TEST1234 5.8 A\nSERIAL: 987654321A");
+
+    expect(result.fields.model).toBe("TEST1234");
+    expect(result.fields.serial).toBe("987654321A");
+  });
+
+  it("does not treat a voltage below a single model label as a model", () => {
+    const result = parseNameplateText("MODEL NUMBER\n208/230 VAC 1 PH 60 HZ");
+
+    expect(result.fields.model).toBe("");
+  });
+
   it("does not cross a model label into a serial label on the next line", () => {
     const result = parseNameplateText(`
       MODEL

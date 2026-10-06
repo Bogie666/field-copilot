@@ -1,11 +1,22 @@
 import { expect, it, vi } from "vitest";
-import { readDeviceNameplate, type OcrWorker, fillNameplateBlanks } from "./nameplateScan";
+import { readDeviceNameplate, type OcrWorker, fillNameplateBlanks, fillNameplateBlanksFromOcr } from "./nameplateScan";
 
 it("fills only untouched blank fields from text, keeping cleared edits and confirmed values", () => {
   const fields = { model: "CONFIRMED", serial: "", refrigerant: "", equipmentAge: "", manufacturedDate: "" };
   const next = fillNameplateBlanks(fields, "MODEL: NEW12345\nSERIAL: AB123456\nR-410A", new Set(["serial"]));
   expect(next).toEqual({ ...fields, refrigerant: "R-410A" });
   expect(fields.refrigerant).toBe("");
+});
+
+it("fills complementary OCR fields but leaves conflicting readings blank", () => {
+  const fields = { model: "", serial: "", refrigerant: "" };
+  const result = fillNameplateBlanksFromOcr(fields, [
+    "MODEL: WRONG123\nSERIAL: AB123456",
+    "MODEL: RIGHT456\nSERIAL: AB123456\nR-410A",
+  ], new Set());
+
+  expect(result.fields).toEqual({ model: "", serial: "AB123456", refrigerant: "R-410A" });
+  expect(result.conflicts).toEqual(["model"]);
 });
 
 
@@ -16,10 +27,68 @@ it("reads the enhanced image on a worker and releases it after recognition", asy
     recognize: async (source) => { image = source; return { data: { text: "MODEL: TEST1234" } }; },
     terminate: async () => { terminated++; },
   };
-  const text = await readDeviceNameplate("enhanced", new AbortController().signal, () => {}, async () => worker);
-  expect(text).toBe("MODEL: TEST1234");
+  const result = await readDeviceNameplate("enhanced", new AbortController().signal, () => {}, async () => worker);
+  expect(result).toEqual({ text: "MODEL: TEST1234", passes: ["MODEL: TEST1234"] });
   expect(image).toBe("enhanced");
   expect(terminated).toBe(1);
+});
+
+it("combines complementary OCR passes and changes page segmentation", async () => {
+  const images: string[] = [];
+  const parameters: Array<Record<string, string>> = [];
+  let pass = 0;
+  const worker: OcrWorker = {
+    setParameters: async (value) => { parameters.push(value); },
+    recognize: async (source) => {
+      images.push(source);
+      pass += 1;
+      return { data: { text: pass === 1 ? "MODEL: 4TTR6036N1000A" : "SERIAL: 23145AB7F\nR-410A" } };
+    },
+    terminate: async () => undefined,
+  };
+
+  const result = await readDeviceNameplate(["grayscale", "threshold"], new AbortController().signal, () => {}, async () => worker);
+
+  expect(images).toEqual(["grayscale", "threshold"]);
+  expect(parameters).toHaveLength(2);
+  expect(new Set(parameters.map((item) => item.tessedit_pageseg_mode))).toEqual(new Set(["6", "11"]));
+  expect(result.text).toContain("MODEL: 4TTR6036N1000A");
+  expect(result.text).toContain("SERIAL: 23145AB7F");
+  expect(result.passes).toHaveLength(2);
+});
+
+it("keeps a successful first pass when a supplemental OCR pass fails", async () => {
+  let pass = 0;
+  const worker: OcrWorker = {
+    recognize: async () => {
+      pass += 1;
+      if (pass === 2) throw new Error("supplemental pass failed");
+      return { data: { text: "MODEL: TEST1234" } };
+    },
+    terminate: async () => undefined,
+  };
+
+  await expect(readDeviceNameplate(["first", "second"], new AbortController().signal, () => {}, async () => worker)).resolves.toEqual({
+    text: "MODEL: TEST1234",
+    passes: ["MODEL: TEST1234"],
+  });
+});
+
+it("tries the second derivative when the first OCR pass fails", async () => {
+  let pass = 0;
+  const worker: OcrWorker = {
+    recognize: async () => {
+      pass += 1;
+      if (pass === 1) throw new Error("first pass failed");
+      return { data: { text: "SERIAL: AB123456" } };
+    },
+    terminate: async () => undefined,
+  };
+
+  await expect(readDeviceNameplate(["first", "second"], new AbortController().signal, () => {}, async () => worker)).resolves.toEqual({
+    text: "SERIAL: AB123456",
+    passes: ["SERIAL: AB123456"],
+  });
 });
 
 
@@ -49,6 +118,23 @@ it("cancels active recognition promptly and discards a late result", async () =>
   await ready; controller.abort();
   finish({data:{text:"stale"}});
   await expect(pending).rejects.toMatchObject({name:"AbortError"});
+  expect(terminated).toBe(1);
+});
+
+it("cancels while OCR parameters are being applied", async () => {
+  const controller = new AbortController();
+  let parametersStarted!: () => void;
+  const ready = new Promise<void>((resolve) => { parametersStarted = resolve; });
+  let terminated = 0;
+  const pending = readDeviceNameplate("old", controller.signal, () => {}, async () => ({
+    setParameters: () => { parametersStarted(); return new Promise(() => undefined); },
+    recognize: async () => ({ data: { text: "stale" } }),
+    terminate: async () => { terminated += 1; },
+  }));
+
+  await ready;
+  controller.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   expect(terminated).toBe(1);
 });
 

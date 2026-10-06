@@ -1,12 +1,14 @@
 "use client";
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_SOURCE_PIXELS = 40_000_000;
+const MAX_SOURCE_PIXELS = 24_000_000;
 const MAX_LONG_EDGE = 2200;
+const MAX_UPSCALE = 2;
 
 export type PreparedNameplateImage = {
   colorDataUrl: string;
   enhancedDataUrl: string;
+  ocrDataUrls: string[];
   width: number;
   height: number;
 };
@@ -24,7 +26,6 @@ async function detectImageType(file: File): Promise<"jpeg" | "png" | "webp"> {
   const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   const isWebp = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) === "RIFF" && String.fromCharCode(bytes[8], bytes[9], bytes[10], bytes[11]) === "WEBP";
   const brand = String.fromCharCode(bytes[4], bytes[5], bytes[6], bytes[7], bytes[8], bytes[9], bytes[10], bytes[11]).toLowerCase();
-
   if (isJpeg) return "jpeg";
   if (isPng) return "png";
   if (isWebp) return "webp";
@@ -40,7 +41,6 @@ async function decodeImage(file: File): Promise<{ source: CanvasImageSource; wid
       const bitmap = await createImageBitmap(file);
       return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
     }
-
     const objectUrl = URL.createObjectURL(file);
     try {
       const image = new Image();
@@ -63,22 +63,66 @@ function canvasToDataUrl(canvas: HTMLCanvasElement, quality = 0.9): string {
   return canvas.toDataURL("image/jpeg", quality);
 }
 
-function enhanceForOcr(source: HTMLCanvasElement): HTMLCanvasElement {
+function histogramLimit(histogram: Uint32Array, total: number, fraction: number): number {
+  const target = total * fraction;
+  let count = 0;
+  for (let value = 0; value < histogram.length; value += 1) {
+    count += histogram[value];
+    if (count >= target) return value;
+  }
+  return 255;
+}
+
+function grayscaleForOcr(source: HTMLCanvasElement): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = source.width;
   canvas.height = source.height;
   const context = canvas.getContext("2d", { willReadFrequently: true });
   if (!context) throw new NameplateImageError("decode_failed", "This browser could not prepare the image for OCR.");
   context.drawImage(source, 0, 0);
-
   const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
   const pixels = imageData.data;
+  const histogram = new Uint32Array(256);
+  for (let index = 0; index < pixels.length; index += 4) {
+    const gray = Math.round(0.299 * pixels[index] + 0.587 * pixels[index + 1] + 0.114 * pixels[index + 2]);
+    histogram[gray] += 1;
+  }
+  const total = canvas.width * canvas.height;
+  const low = histogramLimit(histogram, total, 0.01);
+  const high = histogramLimit(histogram, total, 0.99);
+  const useAutoLevels = high - low >= 24;
+  const range = useAutoLevels ? high - low : 255;
   for (let index = 0; index < pixels.length; index += 4) {
     const gray = 0.299 * pixels[index] + 0.587 * pixels[index + 1] + 0.114 * pixels[index + 2];
-    const contrasted = Math.max(0, Math.min(255, (gray - 128) * 1.55 + 128));
+    const leveled = useAutoLevels ? ((gray - low) * 255) / range : gray;
+    const contrasted = Math.max(0, Math.min(255, (leveled - 128) * 1.18 + 128));
     pixels[index] = contrasted;
     pixels[index + 1] = contrasted;
     pixels[index + 2] = contrasted;
+    pixels[index + 3] = 255;
+  }
+  context.putImageData(imageData, 0, 0);
+  return canvas;
+}
+
+function thresholdForOcr(source: HTMLCanvasElement): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = source.width;
+  canvas.height = source.height;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) throw new NameplateImageError("decode_failed", "This browser could not prepare the high-contrast image for OCR.");
+  context.drawImage(source, 0, 0);
+  const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+  const histogram = new Uint32Array(256);
+  for (let index = 0; index < pixels.length; index += 4) histogram[Math.round(pixels[index])] += 1;
+  const threshold = histogramLimit(histogram, canvas.width * canvas.height, 0.58);
+  for (let index = 0; index < pixels.length; index += 4) {
+    const value = pixels[index] < threshold ? 0 : 255;
+    pixels[index] = value;
+    pixels[index + 1] = value;
+    pixels[index + 2] = value;
+    pixels[index + 3] = 255;
   }
   context.putImageData(imageData, 0, 0);
   return canvas;
@@ -89,27 +133,24 @@ export async function prepareNameplateImage(file: File, rotation = 0): Promise<P
     throw new NameplateImageError("too_large", "The photo is larger than 10 MB. Choose a smaller image or retake it at standard resolution.");
   }
   await detectImageType(file);
-
   const decoded = await decodeImage(file);
   try {
-    if (!decoded.width || !decoded.height) {
-      throw new NameplateImageError("decode_failed", "The image has invalid dimensions.");
-    }
+    if (!decoded.width || !decoded.height) throw new NameplateImageError("decode_failed", "The image has invalid dimensions.");
     if (decoded.width * decoded.height > MAX_SOURCE_PIXELS) {
       throw new NameplateImageError("too_many_pixels", "The photo resolution is too large. Retake it at standard resolution.");
     }
-
     const normalizedRotation = ((rotation % 360) + 360) % 360;
     const swapsSides = normalizedRotation === 90 || normalizedRotation === 270;
     const rotatedWidth = swapsSides ? decoded.height : decoded.width;
     const rotatedHeight = swapsSides ? decoded.width : decoded.height;
-    const scale = Math.min(1, MAX_LONG_EDGE / Math.max(rotatedWidth, rotatedHeight));
+    const scale = Math.min(MAX_UPSCALE, MAX_LONG_EDGE / Math.max(rotatedWidth, rotatedHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(rotatedWidth * scale));
     canvas.height = Math.max(1, Math.round(rotatedHeight * scale));
     const context = canvas.getContext("2d");
     if (!context) throw new NameplateImageError("decode_failed", "This browser could not prepare the image.");
-
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.translate(canvas.width / 2, canvas.height / 2);
@@ -121,11 +162,13 @@ export async function prepareNameplateImage(file: File, rotation = 0): Promise<P
       Math.round(decoded.width * scale),
       Math.round(decoded.height * scale),
     );
-
-    const enhanced = enhanceForOcr(canvas);
+    const grayscale = grayscaleForOcr(canvas);
+    const threshold = thresholdForOcr(grayscale);
+    const enhancedDataUrl = canvasToDataUrl(grayscale, 0.94);
     return {
       colorDataUrl: canvasToDataUrl(canvas, 0.9),
-      enhancedDataUrl: canvasToDataUrl(enhanced, 0.92),
+      enhancedDataUrl,
+      ocrDataUrls: [enhancedDataUrl, canvasToDataUrl(threshold, 0.94)],
       width: canvas.width,
       height: canvas.height,
     };
