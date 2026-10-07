@@ -167,11 +167,48 @@ describe("parseNameplateText", () => {
   });
 
   it("does not copy a serial-only value into the model field", () => {
-    const result = parseNameplateText("SERIAL NO. 23145AB7F\n208/230 VAC");
+    const sameLine = parseNameplateText("SERIAL NO. 23145AB7F\n208/230 VAC");
+    const splitLine = parseNameplateText("SERIAL NO.\n23145AB7F");
+    const damagedSplitLine = parseNameplateText("sen wo.\n23351TCCJF");
 
-    expect(result.fields.serial).toBe("23145AB7F");
+    expect(sameLine.fields.serial).toBe("23145AB7F");
+    expect(sameLine.fields.model).toBe("");
+    expect(sameLine.warnings[0]).toContain("No model number");
+    expect(splitLine.fields).toMatchObject({ model: "", serial: "23145AB7F" });
+    expect(damagedSplitLine.fields).toMatchObject({ model: "", serial: "23351TCCJF" });
+  });
+
+  it("keeps a damaged serial label from becoming a fallback model", () => {
+    const result = parseNameplateText("sen wo. 23351TCCJF");
+
+    expect(result.fields.serial).toBe("23351TCCJF");
     expect(result.fields.model).toBe("");
-    expect(result.warnings[0]).toContain("No model number");
+  });
+
+  it("requires a number suffix on fuzzy serial labels and rejects ambiguous identifier glyphs", () => {
+    expect(parseNameplateText("SEAN 12345678").fields.serial).toBe("");
+    expect(parseNameplateText("SEN SENSOR1234").fields.serial).toBe("");
+    expect(parseNameplateText("SERIAL NO. AB|234").fields.serial).toBe("");
+    expect(parseNameplateText("ABC123|DEF456").fields.model).toBe("");
+
+    const paired = parseNameplateText("MODEL NUMBER SERIAL NUMBER\nABCD|1234 EFGH5678");
+    expect(paired.fields.model).toBe("");
+    expect(paired.fields.serial).toBe("");
+  });
+
+  it("requires electrical context for heavily corrupted frequency labels", () => {
+    expect(parseNameplateText("WI 60").fields.frequency).toBe("");
+    expect(parseNameplateText("HU 60").fields.frequency).toBe("");
+    expect(parseNameplateText("PH~ 1 WI 60").fields.frequency).toBe("60 Hz");
+  });
+
+  it("does not attach installation dates to a separated manufacture-date label", () => {
+    const result = parseNameplateText("MFR DATE\nMODEL ABC123\nINSTALL DATE 9/2024");
+
+    expect(result.fields.manufacturedDate).toBe("");
+    expect(parseNameplateText("MFR DATE INSTALL DATE 9/2024").fields.manufacturedDate).toBe("");
+    expect(parseNameplateText("MFR DATE SERVICE DATE 9/2024").fields.manufacturedDate).toBe("");
+    expect(parseNameplateText("DATE 8/2023").fields.manufacturedDate).toBe("8/2023");
   });
 
   it("uses a conservative fallback candidate when the model label is unreadable", () => {
@@ -183,6 +220,34 @@ describe("parseNameplateText", () => {
 
     expect(result.fields.model).toBe("ML17XC1-036-230A01");
     expect(result.confidence.model).toBe(0.5);
+  });
+
+  it("recovers ratings from a real Trane OCR pass with damaged and split labels", () => {
+    const result = parseNameplateText(`
+      ££" TRANE X\\/ MFR DATE
+      — 8/2023
+      woo wo. ATTV7X48A1000AA vous 208-230
+      sen wo. 23351TCCJF PH~ 1 Wi 60
+      MINIMUM CIRCUIT AMPACITY 42.0 AMPS
+      MAX FUSE / BREAKER (HACR) 45 45
+      HFC —~ 410A 11s 09 02. OR 5.24 kg(SI)
+      COMPR. MOT. 20.3 ALA 208-230 § 12.0 LRA
+    `);
+
+    expect(result.fields).toMatchObject({
+      manufacturer: "Trane",
+      model: "ATTV7X48A1000AA",
+      serial: "23351TCCJF",
+      manufacturedDate: "8/2023",
+      refrigerant: "R-410A",
+      voltage: "208-230 V",
+      phase: "1 phase",
+      frequency: "60 Hz",
+      mca: "42.0 A",
+      maxFuseBreaker: "45 A",
+      rla: "20.3 A",
+      lra: "12.0 A",
+    });
   });
 
   it("returns explicit missing-field warnings rather than fabricated values", () => {

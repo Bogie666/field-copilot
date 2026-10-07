@@ -92,7 +92,6 @@ function clampConfidence(value: unknown): number {
 function normalizeLine(line: string): string {
   return line
     .replace(/[\u2010-\u2015]/g, "-")
-    .replace(/[|]+/g, "I")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -107,7 +106,9 @@ function cleanCandidate(value: string): string {
 }
 
 const MODEL_LABEL = /(?:\bM[O0]DEL\b|\bMOD(?:EL)?\b|\bMDL\b|\bM\s*[/.]\s*N\b)/i;
-const SERIAL_LABEL = /(?:\bSER[I1L]AL\b|\bSER\b|\bS\s*[/.]\s*N\b)/i;
+// Tesseract commonly turns "SER NO." into "sen wo." or "sean 0." on small stamped plates.
+// Keep fuzzy substitutions confined to the complete label, never the identifier candidate.
+const SERIAL_LABEL = /(?:\bSER[I1L]AL\b|\bSER\b|\bS\s*[/.]\s*N\b|\bSE(?:N|AN)\b\s+(?:[NW][O0]|[O0])\.?)/i;
 const IDENTIFIER_STOP_TOKEN = /^(?:MODEL|M0DEL|MOD|MDL|SERIAL|SERLAL|SER1AL|SER|REFRIGERANT|REFRIG|VOLTAGE|VOLTS?|V|VAC|PHASE|PH|HZ|HERTZ|MCA|MOCP|RLA|LRA|CAPACITY|BTU|BTUH|DATE|MFG|MFD|MAX|MAXIMUM|FUSE|BREAKER|BKR|AMPS?|CKT|CIRCUIT)$/i;
 const RATING_VALUE_TOKEN = /^(?:(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:[/-](?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?(?:V(?:AC)?|VOLTS?)?|[13](?:PH|PHASE)|(?:50|60)(?:HZ|HERTZ)|\d+\.\d+(?:A|AMPS?)?|\d+(?:\.\d+)?(?:AMPS?|BTUH?|MBH|TONS?))$/i;
 
@@ -116,6 +117,7 @@ function identifierCandidate(text: string): string {
     .replace(/^\s*(?:(?:N[O0]\.?|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
     .trim();
   if (!cleaned) return "";
+  if (/[|]/.test(cleaned)) return "";
 
   const tokens = cleaned.match(/[A-Z0-9][A-Z0-9/_.-]*/gi) || [];
   const chunks: string[] = [];
@@ -159,6 +161,7 @@ function pairedIdentifiers(lines: string[]): { model?: { value: string; line: st
     }
 
     const nextLine = lines[index + 1] || "";
+    if (/[|]/.test(nextLine)) continue;
     const values = (nextLine.match(/[A-Z0-9][A-Z0-9/_.-]{3,}/gi) || [])
       .map(cleanCandidate)
       .filter((value) => /\d/.test(value) && !IDENTIFIER_STOP_TOKEN.test(value) && !RATING_VALUE_TOKEN.test(value));
@@ -212,11 +215,48 @@ function firstPattern(
   return null;
 }
 
+function patternNearLabel(
+  lines: string[],
+  label: RegExp,
+  value: RegExp,
+  lookAhead = 2,
+): { value: string; line: string } | null {
+  const interveningField = /\b(?:MODEL|M[O0]DEL|MOD|MDL|SERIAL|SER[I1L]AL|INSTALL(?:ED|ATION)?|SERVICE|VOLT(?:AGE|S?)?|MCA|MOCP|MAX(?:IMUM)?\s+(?:FUSE|BREAKER))\b/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    const labelMatch = new RegExp(label.source, "i").exec(lines[index]);
+    if (!labelMatch) continue;
+    const last = Math.min(lines.length - 1, index + lookAhead);
+    for (let candidateIndex = index; candidateIndex <= last; candidateIndex += 1) {
+      const candidateLine = lines[candidateIndex];
+      if (candidateIndex > index && interveningField.test(candidateLine)) break;
+      const match = candidateLine.match(value);
+      if (!match) continue;
+      const isSameLine = candidateIndex === index;
+      if (isSameLine) {
+        const afterLabel = labelMatch.index + labelMatch[0].length;
+        if ((match.index ?? -1) < afterLabel) continue;
+        const between = candidateLine.slice(afterLabel, match.index).replace(/[^A-Z0-9]/gi, "");
+        if (between) continue;
+      }
+      const remainder = candidateLine.replace(match[0], "").replace(/[^A-Z0-9]/gi, "");
+      if (!isSameLine && remainder) continue;
+      return {
+        value: match[1] || match[0],
+        line: lines.slice(index, candidateIndex + 1).join(" "),
+      };
+    }
+  }
+  return null;
+}
+
 const REJECTED_FALLBACK_TOKENS = /^(?:AHRI|ANSI|ASHRAE|UL|ETL|CSA|FCC|HVAC|BTUH?|R\d{2,4}A?|VAC|VOLT|HERTZ|PHASE|MODEL|SERIAL)$/i;
 
 function fallbackModel(lines: string[]): { value: string; line: string; confidence: number } | null {
   const candidates: Array<{ value: string; line: string; score: number }> = [];
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/[|]/.test(line)) continue;
+    if (SERIAL_LABEL.test(line) || (index > 0 && SERIAL_LABEL.test(lines[index - 1]))) continue;
     if (/(?:\bSER(?:IAL)?\b|S\s*\/\s*N|VOLT(?:AGE|S)?|REFRIGERANT|\bMCA\b|\bMOCP\b|MAX(?:IMUM)?\s+(?:FUSE|BREAKER)|\bRLA\b|\bLRA\b|CAPACITY|BTU)/i.test(line)) continue;
     const tokens = line.toUpperCase().match(/\b[A-Z0-9][A-Z0-9/_.-]{5,24}\b/g) || [];
     for (const token of tokens) {
@@ -288,40 +328,55 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
 
   const refrigerant = firstPattern(
     lines,
-    /\bR\s*[- ]?\s*(22|32|1234\s*YF|134\s*A|404\s*A|407\s*A|407\s*C|410\s*A|454\s*B|507\s*A)\b/i,
+    /\b(?:R|HFC)\s*[-~ ]*\s*(22|32|1234\s*YF|134\s*A|404\s*A|407\s*A|407\s*C|410\s*A|454\s*B|507\s*A)\b/i,
     (match) => `R-${match[1].replace(/\s/g, "").toUpperCase()}`,
   );
   if (refrigerant) setResult(extraction, "refrigerant", refrigerant.value, 0.96, refrigerant.line);
 
   const voltage = firstPattern(
     lines,
-    /\b((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*[/\-]\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)\s*(?:V(?:AC)?|VOLTS?)\b/i,
-    (match) => `${match[1].replace(/\s/g, "")} V`,
+    /\b(?:VOLT(?:AGE|S?)?|V[O0][RU]S)\s*[:#=.\-~]*\s*((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*[/-]\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)\b|\b((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*[/-]\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)\s*(?:V(?:AC)?|VOLTS?)\b/i,
+    (match) => `${(match[1] || match[2]).replace(/\s/g, "")} V`,
   );
   if (voltage) setResult(extraction, "voltage", voltage.value, 0.92, voltage.line);
 
-  const phase = firstPattern(lines, /\b(?:PHASE|PH|Ø)\s*[:#=.-]?\s*([13])\b|\b([13])\s*(?:PHASE|PH|Ø)\b/i, (match) => `${match[1] || match[2]} phase`);
+  const phase = firstPattern(lines, /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*([13])\b|\b([13])\s*(?:PHASE|PH|Ø)\b/i, (match) => `${match[1] || match[2]} phase`);
   if (phase) setResult(extraction, "phase", phase.value, 0.9, phase.line);
 
-  const frequency = firstPattern(lines, /\b(?:HZ|HERTZ)\s*[:#=.-]?\s*(50|60)\b|\b(50|60)\s*(?:HZ|HERTZ)\b/i, (match) => `${match[1] || match[2]} Hz`);
-  if (frequency) setResult(extraction, "frequency", frequency.value, 0.92, frequency.line);
+  const frequency = firstPattern(lines, /\b(?:HZ|HERTZ)\s*[:#=.\-~]*\s*(50|60)\b|\b(50|60)\s*(?:HZ|HERTZ)\b/i, (match) => `${match[1] || match[2]} Hz`)
+    || firstPattern(
+      lines.filter((line) => /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*[13]\b|\b[13]\s*(?:PHASE|PH|Ø)\b/i.test(line)),
+      /\b(?:H[UZ]|W[I1L])\s*[:#=.\-~]*\s*(50|60)\b/i,
+      (match) => `${match[1]} Hz`,
+    );
+  if (frequency) setResult(extraction, "frequency", frequency.value, 0.86, frequency.line);
 
   const mca = firstPattern(lines, /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
   if (mca) setResult(extraction, "mca", mca.value, 0.94, mca.line);
 
-  const maxFuse = firstPattern(lines, /\b(?:MOCP|MAX(?:IMUM)?\s+(?:FUSE|BREAKER|OVERCURRENT(?:\s+PROTECTION)?)|MAX\s+CKT\s+BKR)\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
+  const maxFuse = firstPattern(lines, /\b(?:MOCP|MAX(?:IMUM)?\s+(?:FUSE(?:\s*\/\s*BREAKER)?|BREAKER|OVERCURRENT(?:\s+PROTECTION)?)|MAX\s+CKT\s+BKR)(?:\s*\([A-Z0-9]+\))?\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
   if (maxFuse) setResult(extraction, "maxFuseBreaker", maxFuse.value, 0.94, maxFuse.line);
 
-  const rla = firstPattern(lines, /\bRLA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
-  if (rla) setResult(extraction, "rla", rla.value, 0.94, rla.line);
+  const rla = firstPattern(lines, /\bRLA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`)
+    || firstPattern(lines, /\b(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*(?:RLA|ALA)\b/i, (match) => `${match[1]} A`);
+  if (rla) setResult(extraction, "rla", rla.value, 0.9, rla.line);
 
-  const lra = firstPattern(lines, /\bLRA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
+  const lra = firstPattern(lines, /\bLRA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`)
+    || firstPattern(lines, /\b(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*LRA\b/i, (match) => `${match[1]} A`);
   if (lra) setResult(extraction, "lra", lra.value, 0.94, lra.line);
 
   const capacity = firstPattern(lines, /\b(\d{2,6}(?:,\d{3})?)\s*(BTU(?:\/H|H)?|MBH)\b/i, (match) => `${match[1]} ${match[2].toUpperCase()}`);
   if (capacity) setResult(extraction, "capacity", capacity.value, 0.86, capacity.line);
 
-  const manufacturedDate = firstPattern(lines, /\b(?:MFG|MFD|MANUFACTURED|DATE)\s*(?:DATE)?\s*[:#=.-]?\s*((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b/i);
+  const manufacturedDate = firstPattern(
+    lines,
+    /^(?:DATE)\s*[:#=.-]?\s*((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b|\b(?:MFR|MFG|MFD|MANUFACTURED)\s*(?:DATE)?\s*[:#=.-]?\s*((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b/i,
+    (match) => match[1] || match[2],
+  ) || patternNearLabel(
+    lines,
+    /\b(?:MFR|MFG|MFD|MANUFACTURED)\s*(?:DATE)?\b/i,
+    /\b((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b/i,
+  );
   if (manufacturedDate) setResult(extraction, "manufacturedDate", manufacturedDate.value, 0.82, manufacturedDate.line);
 
   if (!extraction.fields.model) extraction.warnings.push("No model number was identified. Verify the image is sharp and the full plate is visible.");

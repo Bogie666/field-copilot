@@ -19,6 +19,57 @@ it("fills complementary OCR fields but leaves conflicting readings blank", () =>
   expect(result.conflicts).toEqual(["model"]);
 });
 
+it("recovers complementary fields from the real Trane scan while rejecting conflicting model readings", () => {
+  const fields = {
+    manufacturer: "", model: "", serial: "", equipmentType: "", manufacturedDate: "",
+    refrigerant: "", voltage: "", phase: "", frequency: "", mca: "", maxFuseBreaker: "",
+    rla: "", lra: "", capacity: "",
+  };
+  const firstPass = `
+    ££" TRANE X\\/ MFR DATE
+    — 8/2023
+    woo wo. ATTV7X48A1000AA vous 208-230
+    sen wo. 23351TCCJF PH~ 1 Wi 60
+    MINIMUM CIRCUIT AMPACITY 42.0 AMPS
+    MAX FUSE / BREAKER (HACR) 45 45
+    HFC —~ 410A 11s 09 02. OR 5.24 kg(SI)
+    COMPR. MOT. 20.3 ALA 208-230 § 12.0 LRA
+  `;
+  const secondPass = `
+    MFR DATE
+    Pr
+    8/2023
+    aTTVIX4BA1000AA vors 208 —230
+    PH- 1
+    Hu 60
+    sean 0. 23351TCCJF
+    42.0
+    "AMPS
+    MINIMUM CIRCUIT AMPACITY
+    FC
+    410A
+    20 LRA
+  `;
+
+  const result = fillNameplateBlanksFromOcr(fields, [firstPass, secondPass], new Set());
+
+  expect(result.fields).toMatchObject({
+    manufacturer: "Trane",
+    model: "",
+    serial: "23351TCCJF",
+    manufacturedDate: "8/2023",
+    refrigerant: "R-410A",
+    voltage: "208-230 V",
+    phase: "1 phase",
+    frequency: "60 Hz",
+    mca: "42.0 A",
+    maxFuseBreaker: "45 A",
+    rla: "20.3 A",
+    lra: "",
+  });
+  expect(result.conflicts).toEqual(["model", "lra"]);
+});
+
 
 it("reads the enhanced image on a worker and releases it after recognition", async () => {
   let terminated = 0;
