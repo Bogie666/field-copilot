@@ -108,13 +108,13 @@ function cleanCandidate(value: string): string {
 const MODEL_LABEL = /(?:\bM[O0]DEL\b|\bMOD(?:EL)?\b|\bMDL\b|\bM\s*[/.]\s*N\b)/i;
 // Tesseract commonly turns "SER NO." into "sen wo." or "sean 0." on small stamped plates.
 // Keep fuzzy substitutions confined to the complete label, never the identifier candidate.
-const SERIAL_LABEL = /(?:\bSER[I1L]AL\b|\bSER\b|\bS\s*[/.]\s*N\b|\bSE(?:N|AN)\b\s+(?:[NW][O0]|[O0])\.?)/i;
+const SERIAL_LABEL = /(?:\bSER[I1L]AL(?=\s|[:#=.-]|N[O0]\b|NUMBER\b)(?:\s*(?:N[O0]\.?|NUMBER))?|\bSER\b|\bS\s*[/.]\s*N\b|\bSE(?:N|AN)\b\s+(?:[NW][O0]|[O0])\.?)/i;
 const IDENTIFIER_STOP_TOKEN = /^(?:MODEL|M0DEL|MOD|MDL|SERIAL|SERLAL|SER1AL|SER|REFRIGERANT|REFRIG|VOLTAGE|VOLTS?|V|VAC|PHASE|PH|HZ|HERTZ|MCA|MOCP|RLA|LRA|CAPACITY|BTU|BTUH|DATE|MFG|MFD|MAX|MAXIMUM|FUSE|BREAKER|BKR|AMPS?|CKT|CIRCUIT)$/i;
 const RATING_VALUE_TOKEN = /^(?:(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:[/-](?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?(?:V(?:AC)?|VOLTS?)?|[13](?:PH|PHASE)|(?:50|60)(?:HZ|HERTZ)|\d+\.\d+(?:A|AMPS?)?|\d+(?:\.\d+)?(?:AMPS?|BTUH?|MBH|TONS?))$/i;
 
 function identifierCandidate(text: string): string {
   const cleaned = text
-    .replace(/^\s*(?:(?:N[O0]\.?|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
+    .replace(/^\s*[:#=.-]*\s*(?:(?:N[O0]\.?|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
     .trim();
   if (!cleaned) return "";
   if (/[|]/.test(cleaned)) return "";
@@ -333,10 +333,11 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
   );
   if (refrigerant) setResult(extraction, "refrigerant", refrigerant.value, 0.96, refrigerant.line);
 
+  const voltageLines = lines.filter((line) => !/\b\d{3}\s*(?:-+\s*\/+|\/+\s*-+)\s*\d{3}\b/.test(line));
   const voltage = firstPattern(
-    lines,
-    /\b(?:VOLT(?:AGE|S?)?|V[O0][RU]S)\s*[:#=.\-~]*\s*((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*[/-]\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)\b|\b((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*[/-]\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)\s*(?:V(?:AC)?|VOLTS?)\b/i,
-    (match) => `${(match[1] || match[2]).replace(/\s/g, "")} V`,
+    voltageLines,
+    /\b(?:VOLT(?:AGE|S?)?|V[O0](?:[RU])?S)\s*[:#=.\-~]*\s*((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*(?:-+|\/+)\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)(?!\s*[/-])\b|\b((?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:\s*(?:-+|\/+)\s*(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?)(?!\s*[/-])\s*(?:V(?:AC)?|VOLTS?)\b/i,
+    (match) => `${(match[1] || match[2]).replace(/\s/g, "").replace(/-+/g, "-").replace(/\/+/g, "/")} V`,
   );
   if (voltage) setResult(extraction, "voltage", voltage.value, 0.92, voltage.line);
 
@@ -351,14 +352,41 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
     );
   if (frequency) setResult(extraction, "frequency", frequency.value, 0.86, frequency.line);
 
-  const mca = firstPattern(lines, /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
-  if (mca) setResult(extraction, "mca", mca.value, 0.94, mca.line);
+  const mca = firstPattern(
+    lines,
+    /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\s*[:#=.\-~]*\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i,
+    (match) => match[1],
+  ) || patternNearLabel(
+    lines,
+    /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\b/i,
+    /^\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*$/i,
+    1,
+  );
+  if (mca) setResult(extraction, "mca", `${mca.value} A`, 0.94, mca.line);
 
   const maxFuse = firstPattern(lines, /\b(?:MOCP|MAX(?:IMUM)?\s+(?:FUSE(?:\s*\/\s*BREAKER)?|BREAKER|OVERCURRENT(?:\s+PROTECTION)?)|MAX\s+CKT\s+BKR)(?:\s*\([A-Z0-9]+\))?\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
   if (maxFuse) setResult(extraction, "maxFuseBreaker", maxFuse.value, 0.94, maxFuse.line);
 
-  const rla = firstPattern(lines, /\bRLA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`)
-    || firstPattern(lines, /\b(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*(?:RLA|ALA)\b/i, (match) => `${match[1]} A`);
+  const rla = lines.reduce<{ value: string; line: string } | null>((found, line, index) => {
+    if (found) return found;
+    const label = /\b(?:RLA|ALA)\b/i.exec(line);
+    if (!label) return null;
+
+    const beforeText = line.slice(0, label.index);
+    const afterText = line.slice(label.index + label[0].length);
+    const before = /(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*$/i.exec(beforeText);
+    const after = /^\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i.exec(afterText);
+    const beforePrefix = before ? beforeText.slice(0, before.index) : "";
+    const beforeIsCompressorNumber = Boolean(before && /^\d$/.test(before[1]) && /\b(?:COMPRESSOR|COMPR?|COMP)\s*$/i.test(beforePrefix));
+    const value = before && !beforeIsCompressorNumber ? before[1] : after?.[1] || before?.[1];
+    if (!value) return null;
+
+    // The sparse pass returned "COMPH" then "3 RLA" after dropping "20.".
+    // Reject only that exact broken continuation so a useful primary pass can win.
+    const isStandaloneBeforeLabel = /^\s*\d\s*(?:A|AMPS?)?\s*(?:RLA|ALA)\s*$/i.test(line);
+    if (isStandaloneBeforeLabel && /^COMPH$/i.test(lines[index - 1] || "")) return null;
+    return { value: `${value} A`, line };
+  }, null);
   if (rla) setResult(extraction, "rla", rla.value, 0.9, rla.line);
 
   const lra = firstPattern(lines, /\bLRA\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`)

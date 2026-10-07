@@ -250,6 +250,25 @@ describe("parseNameplateText", () => {
     });
   });
 
+  it("rejects only the exact sparse-pass RLA fragment and preserves source order", () => {
+    expect(parseNameplateText("COMPH\n3 RLA").fields.rla).toBe("");
+    expect(parseNameplateText("COMPH 2\n3 RLA").fields.rla).toBe("3 A");
+    expect(parseNameplateText("COMP H\n3 RLA").fields.rla).toBe("3 A");
+    expect(parseNameplateText("COMPRESSOR\n3 RLA").fields.rla).toBe("3 A");
+    expect(parseNameplateText("COMPR. MOT. 20.3 RLA 208-230 | 12.0 LRA").fields.rla).toBe("20.3 A");
+    expect(parseNameplateText("RLA 12.3\nCOMPRESSOR 2: 9.1 RLA").fields.rla).toBe("12.3 A");
+    expect(parseNameplateText("COMPRESSOR 1 RLA 12.3 LRA 64").fields.rla).toBe("12.3 A");
+    expect(parseNameplateText("RLA 12.3 9.1 RLA").fields.rla).toBe("12.3 A");
+  });
+
+  it("does not treat ordinary prose or malformed mixed ranges as voltage", () => {
+    expect(parseNameplateText("YOURS 230").fields.voltage).toBe("");
+    expect(parseNameplateText("VOS 208/-230").fields.voltage).toBe("");
+    expect(parseNameplateText("208/-230 V").fields.voltage).toBe("");
+    expect(parseNameplateText("VOS 208/-230 V").fields.voltage).toBe("");
+    expect(parseNameplateText("VOS 208 --230").fields.voltage).toBe("208-230 V");
+  });
+
   it("returns explicit missing-field warnings rather than fabricated values", () => {
     const result = parseNameplateText("UL LISTED CENTRAL AIR CONDITIONER\n60 HZ");
 

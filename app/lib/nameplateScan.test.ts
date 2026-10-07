@@ -19,6 +19,89 @@ it("fills complementary OCR fields but leaves conflicting readings blank", () =>
   expect(result.conflicts).toEqual(["model"]);
 });
 
+it("keeps a one-character material model disagreement blank", () => {
+  const fields = { model: "", serial: "" };
+  const result = fillNameplateBlanksFromOcr(fields, [
+    "MODEL: ABCD1234A\nSERIAL: SAME1234",
+    "MODEL: ABCD1234B\nSERIAL: SAME1234",
+  ], new Set());
+
+  expect(result.fields).toEqual({ model: "", serial: "SAME1234" });
+  expect(result.conflicts).toEqual(["model"]);
+});
+
+it("keeps inserted model characters and different amp ratings as conflicts", () => {
+  const insertedModel = fillNameplateBlanksFromOcr({ model: "", serial: "" }, [
+    "MODEL: ABCD1234A\nSERIAL: SAME1234",
+    "MODEL: ABCD12345A\nSERIAL: SAME1234",
+  ], new Set());
+  const differentMca = fillNameplateBlanksFromOcr({ mca: "" }, ["MCA 20.3 A", "MCA 3 A"], new Set());
+
+  expect(insertedModel.fields).toEqual({ model: "", serial: "SAME1234" });
+  expect(insertedModel.conflicts).toEqual(["model"]);
+  expect(differentMca.fields).toEqual({ mca: "" });
+  expect(differentMca.conflicts).toEqual(["mca"]);
+});
+
+it("recovers complementary fields from the latest Trane scan without treating minor OCR damage as a material conflict", () => {
+  const fields = {
+    manufacturer: "", model: "", serial: "", equipmentType: "", manufacturedDate: "",
+    refrigerant: "", voltage: "", phase: "", frequency: "", mca: "", maxFuseBreaker: "",
+    rla: "", lra: "", capacity: "",
+  };
+  const firstPass = `
+    EE ————— — 1
+    \\& rane XJ MFRDATE | BA
+    NAV spe
+    _MoD. No. ATTV7X48A1000AA vos 208 —230
+    SERIALNO. 23351TCCJF ~~ PH~ 1 1 60 ;
+    | MINIMUM CIRCUIT AMPACITY ~~ 42.0 AMPS |
+    OVERCURRENT PROTECTIVE DEVICE ~~ USA CANADA.
+    MAX FUSE / BREAKER (HACR) 45 45
+    HFC — 410A 1118S. 09 02. Or 5.24 kg(SI)
+    TRANE Te Sy
+    COMPR. MOT. 20.3 RLA 208-230 | 12.0 LRA
+    0.D. MOT. 2.3 FLA 245-385 §y 1/2 HP
+  `;
+  const secondPass = `
+    rane X\\/
+    MFR DATE
+    8/2023
+    MOD. No. ATTV7X48A1 D00AA
+    yours 208 —-230
+    SERIAL NO. 23351TCCJF
+    PH~ 1
+    HZ 60
+    MINIMUM CIRCUIT AMPACITY
+    42.0
+    AMPS
+    MAX Sb’ / BREAKER (HACR)
+    410A
+    COMPH
+    3 RLA
+    208 —230
+    12.0 LRA
+  `;
+
+  const result = fillNameplateBlanksFromOcr(fields, [firstPass, secondPass], new Set());
+
+  expect(result.fields).toMatchObject({
+    manufacturer: "Trane",
+    model: "ATTV7X48A1000AA",
+    serial: "23351TCCJF",
+    manufacturedDate: "8/2023",
+    refrigerant: "R-410A",
+    voltage: "208-230 V",
+    phase: "1 phase",
+    frequency: "60 Hz",
+    mca: "42.0 A",
+    maxFuseBreaker: "45 A",
+    rla: "20.3 A",
+    lra: "12.0 A",
+  });
+  expect(result.conflicts).toEqual([]);
+});
+
 it("recovers complementary fields from the real Trane scan while rejecting conflicting model readings", () => {
   const fields = {
     manufacturer: "", model: "", serial: "", equipmentType: "", manufacturedDate: "",

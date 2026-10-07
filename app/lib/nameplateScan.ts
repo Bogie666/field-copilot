@@ -13,6 +13,27 @@ export function fillNameplateBlanks<T extends Record<string, string>>(current: T
 
 export type OcrReconciliation<T> = { fields: T; conflicts: string[] };
 
+function isMinorSupplementalModelDamage(primary: string, supplemental: string): boolean {
+  const expected = primary.toUpperCase();
+  const noisy = supplemental.toUpperCase();
+  if (expected.length < 8 || noisy.length !== expected.length) return false;
+  const differences = Array.from(expected).filter((character, index) => character !== noisy[index]);
+  if (differences.length !== 1) return false;
+  const index = Array.from(expected).findIndex((character, position) => character !== noisy[position]);
+  return expected[index] === "0" && /[DOQ]/.test(noisy[index]);
+}
+
+function reconcileOcrValues(key: string, values: string[]): string | null {
+  if (values.length === 1) return values[0];
+  if (values.length !== 2) return null;
+
+  // PSM 6 is the primary block-reading pass. A narrow 0-to-D/O/Q confusion in
+  // the sparse pass is minor damage. Other one-character changes still conflict.
+  if (key === "model" && isMinorSupplementalModelDamage(values[0], values[1])) return values[0];
+
+  return null;
+}
+
 /** Reconcile independent OCR passes. Agreement fills blanks; disagreement stays blank for technician review. */
 export function fillNameplateBlanksFromOcr<T extends Record<string, string>>(
   current: T,
@@ -30,7 +51,8 @@ export function fillNameplateBlanksFromOcr<T extends Record<string, string>>(
         .filter((value): value is string => Boolean(value))
         .map((value) => [value.toUpperCase(), value]),
     ).values());
-    if (values.length === 1) next[key as keyof T] = values[0] as T[keyof T];
+    const reconciled = reconcileOcrValues(key, values);
+    if (reconciled) next[key as keyof T] = reconciled as T[keyof T];
     else if (values.length > 1) conflicts.push(key);
   }
   return { fields: next, conflicts };
