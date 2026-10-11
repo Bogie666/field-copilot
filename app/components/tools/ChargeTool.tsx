@@ -1,5 +1,6 @@
 "use client";
 
+import { equipmentForScope } from "../../lib/job/types";
 import { assessCharge, EMPTY_CHARGE, ORIFICE_FORMULA_LABEL, type ChargeInput } from "../../lib/charge/refrigerantCharge";
 import { PT_DATA_APPROVED, ptSourceReference, ptRefrigerants } from "../../lib/charge/ptData";
 import { fmt } from "../../lib/tools/numbers";
@@ -15,7 +16,7 @@ function matchRefrigerant(text: string | undefined): string {
 }
 
 export default function ChargeTool({ ctx }: { ctx: ToolContext }) {
-  const suggestion = matchRefrigerant(ctx.system?.equipment.refrigerant);
+  const suggestion = matchRefrigerant(equipmentForScope(ctx.system, ctx.scope).refrigerant);
   const [form, set] = useFormState<ChargeInput>(ctx, EMPTY_CHARGE, { refrigerant: suggestion });
   const { errors, result } = assessCharge(form);
   const touched = !!(form.suctionPsig || form.suctionLineF || form.liquidPsig || form.liquidLineF);

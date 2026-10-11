@@ -1,5 +1,5 @@
 import type { Reading } from "../job/types";
-import { fixed, fmt, numbersIn, parseDecimal, type ResultItem } from "./numbers";
+import { fixed, fmt, parseDecimal, quantityFrom, type ResultItem } from "./numbers";
 
 export type StaticInput = {
   supply: string;
@@ -24,10 +24,9 @@ export type StaticResult = {
 
 export type StaticAssessment = { errors: string[]; result: StaticResult | null };
 
-/** Pulls the first number from a nameplate value such as "0.50 in. w.c.". */
+/** Single inches-of-water rating; unknown units/ranges require technician entry. */
 export function staticFrom(nameplateValue: string | undefined): string {
-  const n = numbersIn(nameplateValue ?? "")[0];
-  return n === undefined ? "" : String(n);
+  return quantityFrom(nameplateValue, /^(?:(?:in\.?|inch(?:es)?|["″])\s*(?:w\.?\s*[cg]\.?|h2o|water(?:\s+(?:column|gauge))?)?|w\.?\s*[cg]\.?)$/i);
 }
 
 export function assessStatic(input: StaticInput): StaticAssessment {

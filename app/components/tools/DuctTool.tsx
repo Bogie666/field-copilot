@@ -36,7 +36,7 @@ export default function DuctTool({ ctx }: { ctx: ToolContext }) {
       {result && (
         <ResultCard tone={result.severity === "concern" ? "concern" : result.severity === "ok" ? "ok" : "info"} title="Duct velocity">
           <div className="bigReading">
-            {fmt(result.velocity, 0)}
+            {fmt(result.velocity, 1)}
             <small>FPM</small>
           </div>
           <Plate
@@ -47,6 +47,7 @@ export default function DuctTool({ ctx }: { ctx: ToolContext }) {
             ]}
           />
           <p>{result.guidance}</p>
+          <p className="hint">Displayed velocity is rounded. Screening compares the full-precision calculation against the limits.</p>
           {result.suggestions.round.length > 0 && <p className="hint">Nearby round sizes: {result.suggestions.round.join(", ")} in. Rectangular: {result.suggestions.rectangular.join(", ")}.</p>}
         </ResultCard>
       )}

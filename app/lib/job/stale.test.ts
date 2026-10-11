@@ -16,7 +16,7 @@ describe("equipment-dependent findings", () => {
     job = jobReducer(job, { type: "upsertFinding", finding: makeFinding({ scope, title: "Rechecked", confirmedAt: now }), now });
     expect(job.findings[0].staleAt).toBeUndefined();
     expect(job.findingHistory).toEqual([prior]);
-    expect(composeExplanationInput(job.findings).input?.diagnosis).toBe(job.findings[0].diagnosis);
+    expect(composeExplanationInput(job.findings).input?.diagnosis).toBe(`[System 1 / Unassigned equipment / Finding 1] ${job.findings[0].diagnosis}`);
   });
   it.each([
     ["electrical", "voltage"], ["electrical", "phase"], ["charge", "refrigerant"],

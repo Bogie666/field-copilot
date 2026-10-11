@@ -43,6 +43,52 @@ it("keeps inserted model characters and different amp ratings as conflicts", () 
   expect(differentMca.conflicts).toEqual(["mca"]);
 });
 
+
+it("keeps conflicting equipment types and complete dates blank across OCR passes", () => {
+  const result = fillNameplateBlanksFromOcr({ equipmentType: "", manufacturedDate: "" }, [
+    "HEAT PUMP\nMFG DATE 2023-08-15", "AIR CONDITIONER\nMFG DATE 2023-08-16",
+  ], new Set());
+  expect(result.fields).toEqual({ equipmentType: "", manufacturedDate: "" });
+  expect(result.conflicts).toEqual(["equipmentType", "manufacturedDate"]);
+});
+
+it.each([
+  ["HEAT PUMP\nAIR CONDITIONER\nMFG DATE 2023-08-15\nMFD 2023-08-16", "HEAT PUMP\nMFD 2023-08-15"],
+  ["TYPE: HEAT PUMP / AIR CONDITIONER\nMFD 2023-08-15", "HEAT PUMP\nMFD 2023-08-15\nMFD 2023-08-16"],
+])("does not rescue an internally conflicting OCR pass with another pass", (first, second) => {
+  for (const passes of [[first, second], [second, first]]) {
+    const result = fillNameplateBlanksFromOcr({ equipmentType: "", manufacturedDate: "" }, passes, new Set());
+    expect(result.fields).toEqual({ equipmentType: "", manufacturedDate: "" });
+    expect(result.conflicts).toEqual(["equipmentType", "manufacturedDate"]);
+  }
+});
+
+it("preserves complete date and clear type suggestions while ignoring unlabeled dates and incidental types", () => {
+  const result = fillNameplateBlanksFromOcr({ equipmentType: "", manufacturedDate: "" }, [
+    "AIR HANDLER\nMFG DATE 2014-10-12",
+    "TYPE: FAN COIL UNIT\nHeat pump compatible\nSERVICE DATE 2025-01-01",
+  ], new Set());
+  expect(result.fields).toEqual({ equipmentType: "Air handler", manufacturedDate: "2014-10-12" });
+  expect(result.conflicts).toEqual([]);
+  expect(fillNameplateBlanks({ equipmentType: "", manufacturedDate: "" }, "not a heat pump\nDATE 2023", new Set())).toEqual({ equipmentType: "", manufacturedDate: "" });
+});
+
+it("does not erase date precision differences or normalize unsupported dates between OCR passes", () => {
+  const result = fillNameplateBlanksFromOcr({ manufacturedDate: "" }, ["MFG DATE 2023-08-15", "MFG DATE 2023-08"], new Set());
+  expect(result.fields.manufacturedDate).toBe("");
+  expect(result.conflicts).toEqual(["manufacturedDate"]);
+  expect(fillNameplateBlanksFromOcr({ manufacturedDate: "" }, ["MFG DATE 08/09/2023", "MFG DATE 08/09/2023"], new Set()).fields.manufacturedDate).toBe("08/09/2023");
+});
+
+it("keeps manual equipment edits and deliberate blanks despite conflicting OCR suggestions", () => {
+  const current = { equipmentType: "Other", manufacturedDate: "" };
+  const result = fillNameplateBlanksFromOcr(current, [
+    "HEAT PUMP\nAIR CONDITIONER\nMFD 2023\nMFD 2024", "GAS FURNACE\nMFD 2025",
+  ], new Set(["manufacturedDate"]));
+  expect(result.fields).toEqual(current);
+  expect(result.conflicts).toEqual([]);
+});
+
 it("recovers complementary fields from the latest Trane scan without treating minor OCR damage as a material conflict", () => {
   const fields = {
     manufacturer: "", model: "", serial: "", equipmentType: "", manufacturedDate: "",

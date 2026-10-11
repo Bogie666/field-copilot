@@ -1,5 +1,6 @@
 "use client";
 
+import { equipmentForScope } from "../../lib/job/types";
 import { assessStatic, EMPTY_STATIC, MAX_COMPONENTS, staticFrom, type StaticInput } from "../../lib/tools/staticPressure";
 import { fixed } from "../../lib/tools/numbers";
 import { hashInputs } from "../../lib/job/types";
@@ -9,7 +10,7 @@ import SaveFinding, { type BuiltFinding } from "./SaveFinding";
 import { nameplateNote, useFormState } from "./useFormState";
 
 export default function StaticTool({ ctx }: { ctx: ToolContext }) {
-  const suggestion = staticFrom(ctx.system?.equipment.maxExternalStatic);
+  const suggestion = staticFrom(equipmentForScope(ctx.system, ctx.scope).maxExternalStatic);
   const [form, , setForm] = useFormState<StaticInput>(ctx, EMPTY_STATIC, { rated: suggestion });
   const set = <K extends keyof StaticInput>(key: K, value: StaticInput[K]) => setForm((c) => ({ ...c, [key]: value }));
   const { errors, result } = assessStatic(form);

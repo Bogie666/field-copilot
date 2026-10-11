@@ -1,6 +1,14 @@
 # Handoff
 
-State: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings, late-response note protection and published PT calculations/provenance in both themes. Lint, typecheck, 312 unit tests across 41 files and the production build pass. Independent chart verification passed 1,746 source points, 1,738 interval midpoints and 40 range/nonfinite rejection checks.
+## Current correction pass (11 October 2026)
+
+The component-identity, record-integrity, numeric parsing, note-review and deterministic closeout corrections are implemented, including printed-date age and reviewed equipment types. Final local verification passes: TypeScript, lint, 711 tests across 52 files, the default production build and PT fixture regeneration. Independent source review findings have been addressed. The browser suites cannot launch Chromium in this executor (socket creation is denied), so real browser/mobile/OCR/two-tab verification remains a release gate. See `docs/verification.md` for the complete check matrix and `docs/release-gates.md` for technical/deployment-owner decisions. Offline/PWA support, backup/restore, cloud sync and production deployment remain outside this correction pass.
+
+## Historical baseline notes
+
+The following results were recorded by earlier work and are not a claim that the current browser suites were rerun successfully.
+
+Previous state: all four tiles and every tool pass the end-to-end browser smoke. The baseline and regression browser suites pass, including real on-device WASM OCR, photo markup/rollback/retry, durable drafts/stale findings, late-response note protection and published PT calculations/provenance in both themes. Lint, typecheck, 312 unit tests across 41 files and the production build pass. Independent chart verification passed 1,746 source points, 1,738 interval midpoints and 40 range/nonfinite rejection checks.
 
 ## Release hardening
 

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { getBrowserStore } from "../lib/job/browserStore";
+import { forgetJobSession } from "../lib/job/jobSession";
+import { JobConflictError } from "../lib/job/store";
 import type { JobStore } from "../lib/job/store";
 import { setPersistenceState } from "../lib/job/persistenceStatus";
 import { createJob, type JobSummary } from "../lib/job/types";
@@ -25,6 +27,7 @@ export default function JobList() {
   const [error, setError] = useState("");
   const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const [deleting, setDeleting] = useState<JobSummary | null>(null);
 
   useEffect(() => {
@@ -50,9 +53,19 @@ export default function JobList() {
     };
   }, [store]);
 
+  async function retryStorage() {
+    if (!store?.retryPersistentStorage) return;
+    try {
+      await store.retryPersistentStorage();
+      setJobs(await store.list()); setError("");
+      setPersistenceState(store.persistent ? "saved" : "volatile");
+    } catch (error) { setError(error instanceof Error ? error.message : "Device storage is still unavailable."); }
+  }
+
   async function start() {
     if (!store || creating) return;
     setCreating(true);
+    setError("");
     try {
       const job = createJob(label, new Date().toISOString());
       await store.put(job);
@@ -64,10 +77,20 @@ export default function JobList() {
   }
 
   async function remove(job: JobSummary) {
-    if (!store) return;
-    await store.delete(job.id).catch(() => undefined);
-    setJobs((current) => (current ? current.filter((j) => j.id !== job.id) : current));
-    setDeleting(null);
+    if (!store || removing) return;
+    setRemoving(true);
+    setError("");
+    try {
+      await store.delete(job.id, job.storageRevision ?? 0);
+      forgetJobSession(store, job.id);
+      setJobs(current => current ? current.filter(j => j.id !== job.id) : current);
+      setDeleting(null);
+    } catch (error) {
+      if (error instanceof JobConflictError) setJobs(await store.list().catch(() => jobs));
+      setError(`The job was not deleted. ${error instanceof Error ? error.message : "Storage is unavailable."} Try Delete again when storage is available.`);
+      setDeleting(null);
+      setPersistenceState("failed");
+    } finally { setRemoving(false); }
   }
 
   return (
@@ -91,13 +114,18 @@ export default function JobList() {
           <p>{error}</p>
         </div>
       )}
+      {jobs !== null && store && !store.persistent && <div className="callout" data-tone="warn" role="status">
+        <strong>Session-only storage</strong>
+        <p>{store.storageWarning || "Changes are kept only while this tab stays open. Closing or refreshing it will lose them."}</p>
+        {jobs.length === 0 && store.retryPersistentStorage && <button type="button" className="btn" onClick={() => void retryStorage()}>Retry device storage</button>}
+      </div>}
       <h2 style={{ margin: "26px 0 12px" }}>Recent jobs</h2>
       {jobs === null ? (
         <p className="hint" role="status">
           Loading jobs
         </p>
       ) : jobs.length === 0 ? (
-        <EmptyState title="No jobs on this device yet" body="Start a job above. It will show up here so you can pick it back up." />
+        <EmptyState title={store?.persistent ? "No jobs on this device yet" : "No jobs in this session"} body={store?.persistent ? "Start a job above. It will show up here so you can pick it back up." : "Saved device jobs may be unavailable. New session-only jobs will appear here until this tab closes or refreshes."} />
       ) : (
         <ul className="list">
           {jobs.map((job) => (
@@ -108,7 +136,7 @@ export default function JobList() {
                 meta={`${when(job.updatedAt)}, ${job.findingCount} ${job.findingCount === 1 ? "finding" : "findings"} across ${job.systemCount} ${job.systemCount === 1 ? "system" : "systems"}`}
                 right={job.safetyCount > 0 ? <Chip tone="safety">Safety</Chip> : undefined}
               />
-              <button className="btn ghost" type="button" style={{ minHeight: 36, justifySelf: "end" }} onClick={() => setDeleting(job)} aria-label={`Delete ${job.label || "untitled job"}`}>
+              <button className="btn ghost" type="button" style={{ minHeight: 36, justifySelf: "end" }} disabled={removing} onClick={() => setDeleting(job)} aria-label={`Delete ${job.label || "untitled job"}`}>
                 Delete
               </button>
             </li>
@@ -121,10 +149,10 @@ export default function JobList() {
       {deleting && (
         <ConfirmDialog
           title="Delete this job?"
-          body={`${deleting.label || "This job"} and its ${deleting.findingCount} saved findings and photos will be removed from this device. This cannot be undone.`}
-          confirmLabel="Delete job"
+          body={`${deleting.label || "This job"} and its ${deleting.findingCount} saved findings, previous confirmations, notes, and photos will be removed from this device. This cannot be undone.`}
+          confirmLabel={removing ? "Deleting…" : "Delete job"}
           onConfirm={() => void remove(deleting)}
-          onCancel={() => setDeleting(null)}
+          onCancel={() => { if (!removing) setDeleting(null); }}
         />
       )}
     </main>

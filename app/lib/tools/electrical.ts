@@ -1,5 +1,5 @@
 import type { Reading } from "../job/types";
-import { fmt, numbersIn, parseDecimal, round, worstTone, type ResultItem } from "./numbers";
+import { fmt, parseDecimal, quantityFrom, round, worstTone, type ResultItem } from "./numbers";
 
 export type ElectricalInput = {
   nominalVoltage: string;
@@ -39,13 +39,17 @@ export type ElectricalAssessment = { errors: string[]; result: ElectricalResult 
 
 /** Candidate nominal voltages from a nameplate string such as "208/230 V". */
 export function voltageOptions(nameplateVoltage: string | undefined): number[] {
-  return numbersIn(nameplateVoltage ?? "").filter((n) => n >= 100 && n <= 600);
+  // Unlike scalar amp/static ratings, a voltage plate may legitimately list
+  // alternatives or a range. Validate that grammar before extracting options.
+  const match = /^(\+?\d+(?:\.\d+)?(?:\s*(?:\/|-|–|to)\s*\+?\d+(?:\.\d+)?)*)\s*(?:v(?:olts?)?(?:\s*ac)?|vac)?$/i.exec((nameplateVoltage ?? "").trim());
+  if (!match) return [];
+  const values = match[1].split(/\s*(?:\/|-|–|to)\s*/i).map(Number);
+  return values.every((n) => Number.isFinite(n) && n >= 100 && n <= 600) ? [...new Set(values)] : [];
 }
 
 /** Pulls the numeric amps out of a nameplate value such as "12.3 A". */
 export function ampsFrom(nameplateValue: string | undefined): string {
-  const n = numbersIn(nameplateValue ?? "")[0];
-  return n === undefined ? "" : String(n);
+  return quantityFrom(nameplateValue, /^(?:a|amps?|amperes?)$/i);
 }
 
 export function assessElectrical(input: ElectricalInput): ElectricalAssessment {

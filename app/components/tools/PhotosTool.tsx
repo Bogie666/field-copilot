@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { photoMatchesScope } from "../../lib/job/types";
 import { MAX_PHOTOS_PER_SYSTEM } from "../../lib/photoCompress";
 import { EmptyState } from "../ui";
 import type { ToolContext } from "./context";
@@ -16,13 +17,15 @@ export default function PhotosTool({ ctx }: { ctx: ToolContext }) {
   const [message, setMessage] = useState("");
   if (!api || !api.job) return <p className="hint">Open this tool from a job to keep photos.</p>;
   const systemId = system?.id ?? null;
-  const photos = api.job.photos.filter((p) => p.systemId === systemId);
+  const scope = ctx.scope ?? { kind: "home" as const };
+  const componentId = scope.kind === "system" ? scope.componentId : undefined;
+  const photos = api.job.photos.filter(p => photoMatchesScope(p, scope));
 
   async function onFile(file: File | undefined) {
     if (!file || !api) return;
     setBusy(true);
     setError("");
-    const r = await api.addPhoto(file, systemId, "");
+    const r = await api.addPhoto(file, systemId, "", componentId);
     setBusy(false);
     if (!r.ok) setError(r.error);
     if (input.current) input.current.value = "";

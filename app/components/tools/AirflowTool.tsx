@@ -1,5 +1,6 @@
 "use client";
 
+import { equipmentForScope } from "../../lib/job/types";
 import { assessAirflow, directCfm, EMPTY_AIRFLOW, FLOW_HOOD_READING_SCOPE, METHOD_LABELS, tonsFromCapacity, type AirflowInput } from "../../lib/tools/airflow";
 import { hashInputs } from "../../lib/job/types";
 import { fmt } from "../../lib/tools/numbers";
@@ -11,7 +12,7 @@ import { nameplateNote, useFormState } from "./useFormState";
 const MAX_READINGS = 8;
 
 export default function AirflowTool({ ctx }: { ctx: ToolContext }) {
-  const suggestion = tonsFromCapacity(ctx.system?.equipment.capacity);
+  const suggestion = tonsFromCapacity(equipmentForScope(ctx.system, ctx.scope).capacity);
   const [form, , setForm] = useFormState<AirflowInput>(ctx, EMPTY_AIRFLOW, { tons: suggestion });
   const set = <K extends keyof AirflowInput>(key: K, value: AirflowInput[K]) => setForm((c) => ({ ...c, [key]: value }));
   const direct = directCfm(form.method);

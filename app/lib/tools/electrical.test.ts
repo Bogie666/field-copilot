@@ -62,4 +62,39 @@ describe("nameplate helpers", () => {
     expect(ampsFrom("12.3 A")).toBe("12.3");
     expect(ampsFrom("")).toBe("");
   });
+
+  it.each([".5", "0.5", ".50 A", "0.50A", ".5 amps", ".5 amperes"])("uses the true amp reference from %s", (value) => {
+    const rla = ampsFrom(value);
+    expect(rla).toBe("0.5");
+    const result = run({ rla, compressorAmps: ".6", fanFla: rla, fanAmps: ".6" }).result!;
+    expect(result.severity).toBe("concern");
+    expect(result.items.map((item) => item.tone)).toEqual(["concern", "concern"]);
+    expect(result.diagnosis).toContain("120 percent of the 0.5 A RLA");
+    expect(result.diagnosis).toContain("120 percent of the 0.5 A FLA");
+    expect(result.reference).toBe("compressor RLA 0.5 A; fan FLA 0.5 A");
+  });
+
+  it.each(["-.5 A", "-0.5", "-0 A"])("preserves negative amps %s for validation", (value) => {
+    const rla = ampsFrom(value);
+    expect(rla.startsWith("-")).toBe(true);
+    expect(run({ rla, compressorAmps: ".6" }).result).toBeNull();
+    expect(run({ fanFla: rla, fanAmps: ".6" }).result).toBeNull();
+  });
+
+  it.each([".5/.8 A", "0.5 0.8 A", "1e1 A", "1e-1 A", "0.5.0 A", "0.5mA"])("does not extract a plausible-looking first amp number from %s", (value) => {
+    expect(ampsFrom(value)).toBe("");
+    expect(run({ rla: ampsFrom(value), compressorAmps: ".6" }).result!.severity).toBe("info");
+  });
+
+  it.each(["208/230 V", "208-230 V", "208–230 VAC", "208 to 230 volts", "208 / 230 V AC"])("retains explicit nominal voltage alternatives in %s", (value) => {
+    expect(voltageOptions(value)).toEqual([208, 230]);
+  });
+
+  it.each(["240", "240 V", "240VAC", "240 volts", "+240 V"])("retains a single nominal voltage in %s", (value) => {
+    expect(voltageOptions(value)).toEqual([240]);
+  });
+
+  it.each(["-240 V", "240e0 V", "2.4e2 V", "208 230 V", "208/230 V 60 Hz", "208/230/NaN V", "208/-230 V", "240.0.0 V", "208/700 V", "240 kV"])("rejects ambiguous or unsupported nominal voltage text %s", (value) => {
+    expect(voltageOptions(value)).toEqual([]);
+  });
 });

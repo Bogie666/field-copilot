@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { copyText } from "../../lib/clientTools";
 import { TOOLS } from "../../lib/job/registry";
-import { hashInputs, type Finding, type Reading, type Severity } from "../../lib/job/types";
+import { equipmentForScope, hashInputs, photoMatchesScope, type Finding, type Reading, type Severity } from "../../lib/job/types";
 import { ActionBar, Callout, ErrorList, SeverityChip, TextField } from "../ui";
 import type { ToolContext } from "./context";
 import PhotoPicker from "./PhotoPicker";
@@ -38,23 +38,26 @@ type Props = {
  */
 export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedRecommendation, suggestedSafetyAction }: Props) {
   const { api, saved, scope, toolId } = ctx;
-  const [review, setReview] = useFormState(ctx, { recommendation: "", safetyAction: "", photoIds: [] as string[] }, undefined, {
+  const [review, setReview] = useFormState(ctx, { recommendation: "", safetyAction: "", actionTaken: "", verification: "", photoIds: [] as string[] }, undefined, {
     slot: "review",
-    savedInputs: { recommendation: saved?.recommendation ?? "", safetyAction: saved?.safetyAction ?? "", photoIds: saved?.photoIds ?? [] },
+    savedInputs: { recommendation: saved?.recommendation ?? "", safetyAction: saved?.safetyAction ?? "", photoIds: saved?.photoIds ?? [], actionTaken: saved?.actionTaken ?? "", verification: saved?.verification ?? "" },
   });
-  const { recommendation, safetyAction } = review;
-  const photoIds = review.photoIds.filter(id => api?.job?.photos.some(p => p.id === id && (scope?.kind === "system" ? p.systemId === scope.systemId : p.systemId === null)));
+  const { recommendation, safetyAction, actionTaken, verification } = review;
+  const photoIds = review.photoIds.filter(id => api?.job?.photos.some(p => p.id === id && scope && photoMatchesScope(p, scope)));
   const setRecommendation = (value: string) => setReview("recommendation", value);
   const setSafetyAction = (value: string) => setReview("safetyAction", value);
   const setPhotoIds = (value: string[]) => setReview("photoIds", value);
   // Outcome of the last Save press. It only applies to the inputs it was pressed for.
   const [outcome, setOutcome] = useState<{ hash: string; message: string; errors: string[] } | null>(null);
-  const current = outcome && outcome.hash === hash ? outcome : null;
+  const saveStamp = hashInputs({ hash, review, scope });
+  const current = outcome && outcome.hash === saveStamp ? outcome : null;
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const errors = current?.errors ?? [];
   const message = current?.message ?? "";
 
   const [reviewedStamp, setReviewedStamp] = useState<string | null>(null);
-  const reviewStamp = hashInputs({ hash, equipment: ctx.system?.equipment, staleAt: saved?.staleAt });
+  const reviewStamp = hashInputs({ hash, equipment: ctx.system && scope ? equipmentForScope(ctx.system, scope) : undefined, staleAt: saved?.staleAt });
   const stale = !!saved?.staleAt;
   const staleNotice = stale ? <Callout title="Finding needs reconfirmation"><p>{saved?.staleReason}</p><p>This historical finding is excluded from customer notes until you review the readings and references and explicitly save it again. Old input values are retained, not silently replaced.</p></Callout> : null;
   const tool = TOOLS[toolId];
@@ -77,8 +80,8 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
           type="button"
           onClick={() => {
             copyText(text).then(
-              () => setOutcome({ hash, message: "Result copied.", errors: [] }),
-              (e: unknown) => setOutcome({ hash, message: e instanceof Error ? e.message : "Copy failed. Select the result and copy it manually.", errors: [] }),
+              () => setOutcome({ hash: saveStamp, message: "Result copied.", errors: [] }),
+              (e: unknown) => setOutcome({ hash: saveStamp, message: e instanceof Error ? e.message : "Copy failed. Select the result and copy it manually.", errors: [] }),
             );
           }}
         >
@@ -91,13 +94,15 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
     );
   }
 
-  const unchanged = !stale && !!saved && saved.inputsHash === hash && (saved.recommendation ?? "") === recommendation.trim() && (saved.safetyAction ?? "") === safetyAction.trim() && (saved.photoIds ?? []).join() === photoIds.join();
+  const unchanged = !stale && !!saved && saved.inputsHash === hash && (saved.recommendation ?? "") === recommendation.trim() && (saved.safetyAction ?? "") === safetyAction.trim() && (saved.photoIds ?? []).join() === photoIds.join() && (saved.actionTaken ?? "") === actionTaken.trim() && (saved.verification ?? "") === verification.trim();
   const missingSafety = isSafety && !safetyAction.trim();
   const missingPhoto = isSafety && !!built.requiresPhotoForSafety && photoIds.length === 0;
   const blocked = missingSafety || missingPhoto || (stale && reviewedStamp !== reviewStamp);
 
-  function save() {
-    if (!api || !scope || !tool.findingKey || !built || blocked) return;
+  async function save() {
+    if (!api || !scope || !tool.findingKey || !built || blocked || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
     const finding: Omit<Finding, "confirmedAt"> = {
       key: tool.findingKey,
       toolId,
@@ -108,15 +113,24 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
       readings: built.readings,
       reference: built.reference || undefined,
       recommendation: recommendation.trim() || undefined,
+      actionTaken: actionTaken.trim() || undefined,
+      verification: verification.trim() || undefined,
       safetyAction: isSafety ? safetyAction.trim() : undefined,
       photoIds: photoIds.length ? photoIds : undefined,
       requiresPhotoForSafety: built.requiresPhotoForSafety,
       inputs: built.inputs,
       inputsHash: hash,
     };
-    const result = api.saveFinding(finding);
-    if (result.ok) setOutcome({ hash, message: saved ? "Finding updated." : "Finding saved to this job.", errors: [] });
-    else setOutcome({ hash, message: "", errors: result.errors });
+    try {
+      const result = await api.saveFinding(finding);
+      if (result.ok) setOutcome({ hash: saveStamp, message: result.persistent ? "Finding saved on this device." : "Finding kept for this session only. Closing the session may lose it.", errors: [] });
+      else setOutcome({ hash: saveStamp, message: "", errors: result.errors });
+    } catch (error) {
+      setOutcome({ hash: saveStamp, message: "", errors: [error instanceof Error ? error.message : "The finding could not be saved. Try again."] });
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }
 
   return (
@@ -137,7 +151,9 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
             Use suggested wording (edit to match what you did)
           </button>
         )}
-        {isSafety && ctx.system && <PhotoPicker systemId={ctx.system.id} selected={photoIds} onChange={setPhotoIds} required={built.requiresPhotoForSafety} />}
+        <PhotoPicker scope={scope} selected={photoIds} onChange={setPhotoIds} required={isSafety && built.requiresPhotoForSafety} />
+        <TextField label="Action taken (optional)" value={actionTaken} onChange={(value) => setReview("actionTaken", value)} multiline maxLength={2000} hint="Record only work actually performed. Leave blank if no action was taken." />
+        <TextField label="Verification after action (optional)" value={verification} onChange={(value) => setReview("verification", value)} multiline maxLength={2000} hint="Record the recheck and its result, or why verification is still pending. Blank means not documented." />
         <TextField label="Recommended next step (optional)" value={recommendation} onChange={setRecommendation} multiline hint="Only write what you recommend. The customer note never invents a recommendation." />
         {suggestedRecommendation && !recommendation.trim() && (
           <button className="btn ghost" type="button" onClick={() => setRecommendation(suggestedRecommendation)}>
@@ -147,12 +163,22 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
         {stale && <label className="check"><input type="checkbox" checked={reviewedStamp === reviewStamp} onChange={(e) => setReviewedStamp(e.target.checked ? reviewStamp : null)} />I reviewed the readings and references against the current nameplate.</label>}
         <ErrorList errors={errors} />
       </section>
-      <ActionBar note={message || (unchanged ? "Saved to this job" : saved ? "You have unsaved changes" : blocked ? (missingSafety ? "Add the safety action to save" : "Attach a photo to save") : "Not saved yet")}>
-        <button className="btn primary" type="button" onClick={save} disabled={blocked || unchanged}>
-          {unchanged ? "Saved" : stale ? "Reconfirm finding" : saved ? "Update finding" : "Save finding"}
+      <ActionBar note={saving ? "Saving finding…" : message || (unchanged ? (api.persistent ? "Saved on this device" : "Kept for this session only") : saved ? "You have unsaved changes" : blocked ? (missingSafety ? "Add the safety action to save" : missingPhoto ? "Attach a photo to save" : "Review the current readings and references to reconfirm") : "Not saved yet")}>
+        <button className="btn primary" type="button" onClick={() => void save()} disabled={saving || blocked || unchanged}>
+          {saving ? "Saving…" : unchanged ? "Saved" : stale ? "Reconfirm finding" : saved ? "Update finding" : "Save finding"}
         </button>
         {saved && (
-          <button className="btn danger" type="button" onClick={() => api.dispatch({ type: "removeFinding", key: saved.key, scope: saved.scope })}>
+          <button className="btn danger" type="button" disabled={saving} onClick={async () => {
+            if (savingRef.current) return;
+            savingRef.current = true;
+            setSaving(true);
+            try {
+              const result = await api.saveAction({ type: "removeFinding", key: saved.key, scope: saved.scope });
+              if (!result.ok) setOutcome({ hash: saveStamp, message: "", errors: result.errors });
+            } catch (error) {
+              setOutcome({ hash: saveStamp, message: "", errors: [error instanceof Error ? error.message : "The finding could not be removed."] });
+            } finally { savingRef.current = false; setSaving(false); }
+          }}>
             Remove
           </button>
         )}

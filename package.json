@@ -13,7 +13,8 @@
     "smoke": "node scripts/smoke.cjs",
     "smoke:regressions": "node scripts/drafts-smoke.cjs && node scripts/notes-smoke.cjs && node scripts/nameplate-photo-smoke.cjs && node scripts/pt-reference-smoke.cjs",
     "smoke:pt": "node scripts/pt-reference-smoke.cjs",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build"
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build",
+    "smoke:integrity": "node scripts/record-integrity-smoke.cjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "^5.2.0",

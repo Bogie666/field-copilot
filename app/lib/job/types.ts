@@ -14,7 +14,18 @@ export type Reading = {
   source: ReadingSource;
 };
 
-export type FindingScope = { kind: "system"; systemId: string } | { kind: "home" };
+export type ComponentKind = "condenser" | "furnace" | "attic" | "legacy";
+export type JobComponent = {
+  id: string;
+  kind: ComponentKind;
+  name: string;
+  equipment: Record<string, string>;
+  equipmentAge: string;
+  equipmentAgeSource?: "manual" | "manufactured-date";
+  equipmentAgeAsOf?: string;
+  notes: string;
+};
+export type FindingScope = { kind: "system"; systemId: string; componentId?: string } | { kind: "home" };
 
 export type Finding = {
   /** Stable per tool and scope, so saving again replaces the earlier finding. */
@@ -31,6 +42,9 @@ export type Finding = {
   reference?: string;
   /** Technician-written next step, optional. */
   recommendation?: string;
+  /** Technician-documented work and subsequent verification, never inferred. */
+  actionTaken?: string;
+  verification?: string;
   /** Required when severity is "safety". */
   safetyAction?: string;
   /** Photos documenting the finding. Required for safety findings from the furnace tool. */
@@ -59,6 +73,7 @@ export type ToolDraft = {
 export type PhotoMeta = {
   id: string;
   systemId: string | null;
+  componentId?: string;
   caption: string;
   mime: string;
   bytes: number;
@@ -67,16 +82,25 @@ export type PhotoMeta = {
 
 export type JobSystem = {
   id: string;
+  /** Optional only for records created before component identity was introduced. */
+  components?: JobComponent[];
   name: string;
   /** Confirmed nameplate and equipment fields, keyed by field name (model, serial, rla, ...). */
   equipment: Record<string, string>;
   /** Equipment age in years as typed by the technician. Blank means unknown. */
   equipmentAge: string;
+  equipmentAgeSource?: "manual" | "manufactured-date";
+  equipmentAgeAsOf?: string;
   notes: string;
 };
 
+export type NotesTidyHistory = { scope: FindingScope; original: string; accepted: string; acceptedAt: string };
+
 export type Job = {
   id: string;
+  /** Optimistic concurrency revision; missing legacy revision means zero. */
+  storageRevision?: number;
+  notesTidyHistory?: NotesTidyHistory[];
   /** Free text the tech types. Stays on the device and is never sent to an AI provider. */
   label: string;
   createdAt: string;
@@ -91,14 +115,80 @@ export type Job = {
   homeNotes: string;
 };
 
-export type JobSummary = Pick<Job, "id" | "label" | "createdAt" | "updatedAt"> & {
+export type JobSummary = Pick<Job, "id" | "label" | "createdAt" | "updatedAt" | "storageRevision"> & {
   systemCount: number;
   findingCount: number;
   safetyCount: number;
 };
 
 export function scopeKey(scope: FindingScope): string {
-  return scope.kind === "home" ? "home" : `system:${scope.systemId}`;
+  return scope.kind === "home" ? "home" : `system:${scope.systemId}${scope.componentId ? `:component:${scope.componentId}` : ""}`;
+}
+
+export const COMPONENT_LABELS: Record<ComponentKind, string> = {
+  condenser: "Condenser", furnace: "Furnace or air handler", attic: "Attic and ductwork", legacy: "Unassigned legacy equipment",
+};
+
+export function defaultComponents(systemId: string): JobComponent[] {
+  return (["condenser", "furnace", "attic"] as const).map(kind => ({
+    id: `${systemId}:${kind}`, kind, name: COMPONENT_LABELS[kind], equipment: {}, equipmentAge: "", notes: "",
+  }));
+}
+
+/** Persisted optional age provenance is untrusted, even when the age itself is valid. */
+function normalizedAgeMetadata(value: { equipmentAgeSource?: unknown; equipmentAgeAsOf?: unknown }): Pick<JobComponent, "equipmentAgeSource" | "equipmentAgeAsOf"> {
+  return {
+    equipmentAgeSource: value.equipmentAgeSource === "manual" || value.equipmentAgeSource === "manufactured-date" ? value.equipmentAgeSource : undefined,
+    equipmentAgeAsOf: typeof value.equipmentAgeAsOf === "string" && Number.isFinite(Date.parse(value.equipmentAgeAsOf)) ? value.equipmentAgeAsOf : undefined,
+  };
+}
+
+/** Deterministic IDs also let old, unmigrated records be inspected without writing. */
+export function componentsForSystem(system: JobSystem): JobComponent[] {
+  if (!Array.isArray(system.components)) return defaultComponents(system.id);
+  const seen = new Set<string>();
+  return system.components.filter(c => {
+    if (!c || typeof c !== "object" || typeof c.id !== "string" || !c.id || seen.has(c.id) || !Object.hasOwn(COMPONENT_LABELS, c.kind)) return false;
+    seen.add(c.id);
+    return true;
+  }).map(c => ({ ...c, ...normalizedAgeMetadata(c), name: typeof c.name === "string" && c.name ? c.name : COMPONENT_LABELS[c.kind],
+    equipment: c.equipment && typeof c.equipment === "object" && !Array.isArray(c.equipment) ? Object.fromEntries(Object.entries(c.equipment).filter(([, value]) => typeof value === "string")) : {},
+    equipmentAge: typeof c.equipmentAge === "string" ? c.equipmentAge : "", notes: typeof c.notes === "string" ? c.notes : "",
+  }));
+}
+
+export function componentForTile(system: JobSystem, tileId: string): JobComponent | undefined {
+  return componentsForSystem(system).find(component => component.kind === tileId);
+}
+
+export function scopeForComponent(system: JobSystem, component: JobComponent): FindingScope {
+  return { kind: "system", systemId: system.id, componentId: component.id };
+}
+
+export function componentForScope(system: JobSystem | null, scope: FindingScope | null): JobComponent | undefined {
+  return system && scope?.kind === "system" && scope.systemId === system.id && scope.componentId
+    ? componentsForSystem(system).find(component => component.id === scope.componentId) : undefined;
+}
+
+export function equipmentForScope(system: JobSystem | null, scope: FindingScope | null): Record<string, string> {
+  if (!system || scope?.kind === "home") return {};
+  return scope?.kind === "system" && scope.componentId ? componentForScope(system, scope)?.equipment ?? {} : system.equipment;
+}
+
+export function notesForScope(system: JobSystem | null, scope: FindingScope | null): string {
+  if (!system || scope?.kind === "home") return "";
+  return scope?.kind === "system" && scope.componentId ? componentForScope(system, scope)?.notes ?? "" : system.notes;
+}
+
+export function scopeExists(job: Job, scope: FindingScope): boolean {
+  if (scope.kind === "home") return true;
+  const system = job.systems.find(s => s.id === scope.systemId);
+  return !!system && (scope.componentId === undefined || componentsForSystem(system).some(c => c.id === scope.componentId));
+}
+
+export function photoMatchesScope(photo: PhotoMeta, scope: FindingScope): boolean {
+  return scope.kind === "home" ? photo.systemId === null && !photo.componentId
+    : photo.systemId === scope.systemId && photo.componentId === scope.componentId;
 }
 
 export function sameFinding(a: Pick<Finding, "key" | "scope">, b: Pick<Finding, "key" | "scope">): boolean {
@@ -133,10 +223,11 @@ export function validateFinding(value: unknown, job?: Job): string[] {
   if (!scope || (scope.kind !== "home" && !(scope.kind === "system" && typeof scope.systemId === "string" && scope.systemId))) {
     errors.push("Finding needs a scope (a system or the whole home).");
   }
+  if (scope?.kind === "system" && scope.componentId !== undefined && (typeof scope.componentId !== "string" || !scope.componentId)) errors.push("Finding needs a valid component identity.");
   if (!f.severity || !SEVERITIES.includes(f.severity)) errors.push("Severity must be info, ok, concern or safety.");
   if (typeof f.title !== "string" || !f.title.trim()) errors.push("Finding needs a title.");
   if (typeof f.diagnosis !== "string" || !f.diagnosis.trim()) errors.push("Finding needs a documented diagnosis.");
-  for (const [name, text] of [["title", f.title], ["diagnosis", f.diagnosis], ["reference", f.reference], ["recommendation", f.recommendation], ["safetyAction", f.safetyAction], ["staleReason", f.staleReason], ["staleAt", f.staleAt]] as const) {
+  for (const [name, text] of [["title", f.title], ["diagnosis", f.diagnosis], ["reference", f.reference], ["recommendation", f.recommendation], ["actionTaken", f.actionTaken], ["verification", f.verification], ["safetyAction", f.safetyAction], ["staleReason", f.staleReason], ["staleAt", f.staleAt]] as const) {
     if (text !== undefined && typeof text !== "string") errors.push(`${name} must be text.`);
     if (typeof text === "string" && text.length > MAX_TEXT) errors.push(`${name} is longer than ${MAX_TEXT} characters.`);
   }
@@ -160,11 +251,11 @@ export function validateFinding(value: unknown, job?: Job): string[] {
   }
   if (f.photoIds !== undefined && (!Array.isArray(f.photoIds) || f.photoIds.some(id => typeof id !== "string" || !id))) errors.push("Photo attachments must be a list of IDs.");
   if (job) {
-    if (scope?.kind === "system" && !job.systems.some(s => s.id === scope.systemId)) errors.push("The finding's system is not in this job.");
+    if (scope && !scopeExists(job, scope)) errors.push("The finding's system or component is not in this job.");
     if (Array.isArray(f.photoIds)) {
       for (const id of f.photoIds) {
         const photo = job.photos.find(p => p.id === id);
-        if (!photo || (scope?.kind === "system" ? photo.systemId !== scope.systemId : photo.systemId !== null)) errors.push("An attached photo is missing or belongs to a different scope.");
+        if (!photo || (!scope || !photoMatchesScope(photo, scope))) errors.push("An attached photo is missing or belongs to a different scope.");
       }
     }
   }
@@ -184,19 +275,61 @@ export function validToolDraft(value: unknown, job?: Job): value is ToolDraft {
   const d = value as Partial<ToolDraft>;
   if (typeof d.toolId !== "string" || !d.toolId || typeof d.slot !== "string" || !d.slot || typeof d.updatedAt !== "string" || Number.isNaN(Date.parse(d.updatedAt))) return false;
   if (!d.scope || (d.scope.kind !== "home" && !(d.scope.kind === "system" && typeof d.scope.systemId === "string" && d.scope.systemId))) return false;
-  if (job && d.scope.kind === "system" && !job.systems.some(s => s.id === (d.scope as { systemId: string }).systemId)) return false;
+  if (d.scope.kind === "system" && d.scope.componentId !== undefined && (typeof d.scope.componentId !== "string" || !d.scope.componentId)) return false;
+  if (job && !scopeExists(job, d.scope)) return false;
   if (!d.inputs || typeof d.inputs !== "object" || Array.isArray(d.inputs)) return false;
   try { return JSON.stringify(d.inputs).length <= 20_000; } catch { return false; }
 }
 
 export function normalizeJobExtensions(job: Job): Job {
+  // Old system-level evidence cannot be safely assigned to the indoor or outdoor unit.
+  // Retain it under a clearly named legacy component, never infer its physical identity.
+  const legacyIds = new Map<string, string>();
+  const systems = job.systems.map(rawSystem => {
+    const system = { ...rawSystem, ...normalizedAgeMetadata(rawSystem) };
+    const unassigned = Object.keys(system.equipment).length > 0 || !!system.equipmentAge || !!system.notes ||
+      [...job.findings, ...(Array.isArray(job.drafts) ? job.drafts : []), ...(Array.isArray(job.findingHistory) ? job.findingHistory : []), ...(Array.isArray(job.notesTidyHistory) ? job.notesTidyHistory : [])].some(item => item?.scope?.kind === "system" && item.scope.systemId === system.id && !item.scope.componentId) ||
+      job.photos.some(photo => photo.systemId === system.id && !photo.componentId);
+    const components = componentsForSystem(system);
+    if (!unassigned) return { ...system, components };
+    const existing = components.find(c => c.kind === "legacy");
+    const unassignedFindings = job.findings.filter(f => f.scope.kind === "system" && f.scope.systemId === system.id && !f.scope.componentId);
+    const unassignedDrafts = (Array.isArray(job.drafts) ? job.drafts : []).filter(d => validToolDraft(d) && d.scope.kind === "system" && d.scope.systemId === system.id && !d.scope.componentId);
+    const evidenceCollision = existing && (unassignedFindings.some(incoming => job.findings.some(f => f.scope.kind === "system" && f.scope.systemId === system.id && f.scope.componentId === existing.id && f.key === incoming.key)) ||
+      unassignedDrafts.some(incoming => (Array.isArray(job.drafts) ? job.drafts : []).some(d => d?.scope?.kind === "system" && d.scope.systemId === system.id && d.scope.componentId === existing.id && d.toolId === incoming.toolId && d.slot === incoming.slot)));
+    const conflicts = existing && (evidenceCollision || Object.entries(system.equipment).some(([key, value]) => existing.equipment[key] && existing.equipment[key] !== value) ||
+      (system.notes && existing.notes && system.notes !== existing.notes) || (system.equipmentAge && existing.equipmentAge && system.equipmentAge !== existing.equipmentAge));
+    // Preserve two contradictory legacy identities separately; neither may replace the other.
+    const id = conflicts ? `${system.id}:legacy-${hashInputs({ equipment: system.equipment, age: system.equipmentAge, notes: system.notes, findings: unassignedFindings.map(f => ({ key: f.key, toolId: f.toolId, confirmedAt: f.confirmedAt, inputsHash: f.inputsHash })), drafts: unassignedDrafts.map(d => ({ toolId: d.toolId, slot: d.slot, updatedAt: d.updatedAt, inputs: d.inputs })) })}` : existing?.id ?? `${system.id}:legacy`;
+    legacyIds.set(system.id, id);
+    const previous = components.find(c => c.id === id);
+    const legacy: JobComponent = { id, kind: "legacy", name: conflicts ? `${COMPONENT_LABELS.legacy} (additional record)` : COMPONENT_LABELS.legacy,
+      equipmentAgeSource: system.equipmentAgeSource ?? previous?.equipmentAgeSource, equipmentAgeAsOf: system.equipmentAgeAsOf ?? previous?.equipmentAgeAsOf,
+      equipment: { ...(previous?.equipment ?? {}), ...system.equipment }, equipmentAge: system.equipmentAge || previous?.equipmentAge || "", notes: system.notes || previous?.notes || "" };
+    return { ...system, equipment: {}, equipmentAge: "", equipmentAgeSource: undefined, equipmentAgeAsOf: undefined, notes: "", components: previous ? components.map(c => c.id === id ? legacy : c) : [...components, legacy] };
+  });
+  const migratedScope = (scope: FindingScope): FindingScope => scope.kind === "system" && !scope.componentId && legacyIds.has(scope.systemId)
+    ? { ...scope, componentId: legacyIds.get(scope.systemId)! } : scope;
+  job = {
+    ...job, systems,
+    findings: job.findings.map(f => ({ ...f, scope: migratedScope(f.scope) })),
+    photos: job.photos.map(p => p.systemId && !p.componentId && legacyIds.has(p.systemId) ? { ...p, componentId: legacyIds.get(p.systemId)! } : p),
+    ...(Array.isArray(job.drafts) ? { drafts: job.drafts.filter(d => d && typeof d === "object").map(d => ({ ...d, scope: d.scope ? migratedScope(d.scope) : d.scope })) } : {}),
+    ...(Array.isArray(job.findingHistory) ? { findingHistory: job.findingHistory.filter(f => f && typeof f === "object").map(f => ({ ...f, scope: f.scope ? migratedScope(f.scope) : f.scope })) } : {}),
+    ...(job.notesTidyHistory === undefined ? {} : { notesTidyHistory: Array.isArray(job.notesTidyHistory) ? job.notesTidyHistory.filter(h => h && typeof h === "object" && h.scope &&
+      (h.scope.kind === "home" || (h.scope.kind === "system" && typeof h.scope.systemId === "string" && !!h.scope.systemId && (h.scope.componentId === undefined || typeof h.scope.componentId === "string"))) &&
+      typeof h.original === "string" && h.original.length <= 12000 && typeof h.accepted === "string" && h.accepted.length <= 12000 && typeof h.acceptedAt === "string" && !Number.isNaN(Date.parse(h.acceptedAt)))
+      .map(h => ({ ...h, scope: migratedScope(h.scope) })).filter(h => scopeExists({ ...job, systems }, h.scope)) : [] }),
+  };
   return {
     ...job,
     findings: job.findings.map(f => {
-      const attachmentIssues = validateFinding(f, job).filter(issue => /photo|system is not in this job/i.test(issue));
-      return attachmentIssues.length ? { ...f, staleAt: f.staleAt ?? job.updatedAt, staleReason: "An attached photo is missing or belongs to another scope. Review attachments and explicitly reconfirm before using this finding." } : f;
+      const attachmentIssues = validateFinding(f, job).filter(issue => /photo|system or component is not in this job/i.test(issue));
+      return attachmentIssues.length ? { ...f, staleAt: f.staleAt ?? job.updatedAt, staleReason: "The system, component or an attached photo is unavailable or belongs to another scope. Review the record and explicitly reconfirm before using this finding." } : f;
     }),
-    ...(job.drafts === undefined ? {} : { drafts: Array.isArray(job.drafts) ? job.drafts.filter(d => validToolDraft(d, job)) : [] }),
+    ...(job.drafts === undefined ? {} : { drafts: Array.isArray(job.drafts) ? job.drafts.filter(d => validToolDraft(d, job)).map(d => ({ toolId: d.toolId,
+      scope: d.scope.kind === "home" ? { kind: "home" as const } : { kind: "system" as const, systemId: d.scope.systemId, ...(d.scope.componentId ? { componentId: d.scope.componentId } : {}) },
+      slot: d.slot, inputs: d.inputs, updatedAt: d.updatedAt })) : [] }),
     ...(job.findingHistory === undefined ? {} : { findingHistory: Array.isArray(job.findingHistory) ? job.findingHistory.filter(f => { try { return validateFinding(f).length === 0; } catch { return false; } }) : [] }),
   };
 }
@@ -207,12 +340,13 @@ export function newId(prefix: string): string {
 }
 
 export function createJob(label: string, now: string, ids: { jobId?: string; systemId?: string } = {}): Job {
+  const systemId = ids.systemId ?? newId("sys");
   return {
     id: ids.jobId ?? newId("job"),
     label: label.trim().slice(0, 80),
     createdAt: now,
     updatedAt: now,
-    systems: [{ id: ids.systemId ?? newId("sys"), name: "System 1", equipment: {}, equipmentAge: "", notes: "" }],
+    systems: [{ id: systemId, components: defaultComponents(systemId), name: "System 1", equipment: {}, equipmentAge: "", notes: "" }],
     findings: [],
     photos: [],
     homeNotes: "",
@@ -225,6 +359,7 @@ export function summarizeJob(job: Job): JobSummary {
     label: job.label,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
+    storageRevision: job.storageRevision ?? 0,
     systemCount: job.systems.length,
     findingCount: job.findings.length,
     safetyCount: job.findings.filter((f) => f.severity === "safety").length,

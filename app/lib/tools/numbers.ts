@@ -30,7 +30,21 @@ export function fixed(value: number, places = 2): string {
   return round(value, places).toFixed(places);
 }
 
-/** Pulls plausible numbers out of text like "208/230 V" or "35-65 F". */
+/**
+ * A single reviewed nameplate quantity, optionally followed by one of the expected
+ * units. Match the entire value: never turn a malformed number, range, exponent,
+ * or an unrelated unit into a usable reference by taking its first digit run.
+ * Signs are preserved so the tool's normal validation can reject negative ratings.
+ */
+export function quantityFrom(text: string | undefined, units: RegExp): string {
+  const match = /^([-+]?(?:\d+\.?\d*|\.\d+))\s*(.*?)$/.exec((text ?? "").trim());
+  if (!match || (match[2] && !units.test(match[2]))) return "";
+  const parsed = parseDecimal(match[1], "Nameplate quantity");
+  if (parsed.ok !== true) return "";
+  return Object.is(parsed.value, -0) ? "-0" : String(parsed.value);
+}
+
+/** Legacy multi-value extraction for capacity/rise fields; not for scalar references. */
 export function numbersIn(text: string): number[] {
   return (text.match(/\d+(?:\.\d+)?/g) ?? []).map(Number).filter(Number.isFinite);
 }

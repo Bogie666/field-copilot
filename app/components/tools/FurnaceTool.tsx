@@ -1,5 +1,6 @@
 "use client";
 
+import { equipmentForScope } from "../../lib/job/types";
 import { assessFurnace, EMPTY_FURNACE, FURNACE_SAFETY_CONFIG, OBSERVATIONS, parseRiseRange, type FurnaceInput } from "../../lib/tools/furnaceCheck";
 import { fmt } from "../../lib/tools/numbers";
 import { hashInputs } from "../../lib/job/types";
@@ -9,7 +10,7 @@ import SaveFinding, { type BuiltFinding } from "./SaveFinding";
 import { useFormState } from "./useFormState";
 
 export default function FurnaceTool({ ctx }: { ctx: ToolContext }) {
-  const range = parseRiseRange(ctx.system?.equipment.tempRiseRange);
+  const range = parseRiseRange(equipmentForScope(ctx.system, ctx.scope).tempRiseRange);
   const seed: Partial<FurnaceInput> = range ? { riseMinF: String(range[0]), riseMaxF: String(range[1]) } : {};
   const [form, , setForm] = useFormState<FurnaceInput>(ctx, EMPTY_FURNACE, seed);
   const set = <K extends keyof FurnaceInput>(key: K, value: FurnaceInput[K]) => setForm((c) => ({ ...c, [key]: value }));
