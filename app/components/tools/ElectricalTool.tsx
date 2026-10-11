@@ -1,5 +1,6 @@
 "use client";
 
+import { equipmentForScope } from "../../lib/job/types";
 import { assessElectrical, ampsFrom, EMPTY_ELECTRICAL, voltageOptions, type ElectricalInput } from "../../lib/tools/electrical";
 import { hashInputs } from "../../lib/job/types";
 import { ErrorList, NumberField, Plate, ResultCard, SelectField } from "../ui";
@@ -8,7 +9,7 @@ import SaveFinding, { type BuiltFinding } from "./SaveFinding";
 import { nameplateNote, useFormState } from "./useFormState";
 
 export default function ElectricalTool({ ctx }: { ctx: ToolContext }) {
-  const equipment = ctx.system?.equipment ?? {};
+  const equipment = equipmentForScope(ctx.system, ctx.scope);
   const options = voltageOptions(equipment.voltage);
   const seed: Partial<ElectricalInput> = { nominalVoltage: options.length === 1 ? String(options[0]) : "", rla: ampsFrom(equipment.rla) };
   const [form, set] = useFormState<ElectricalInput>(ctx, EMPTY_ELECTRICAL, seed);

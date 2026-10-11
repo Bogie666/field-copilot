@@ -129,7 +129,7 @@ async function noOverflow(page, label) {
     // 7. Summary: safety first, compose payload has exactly six keys and no job label
     await page.getByRole("link", { name: /Summary and customer note/ }).click();
     await page.getByRole("heading", { name: "Summary", exact: true }).waitFor();
-    const headings = await page.locator("section[aria-label='System 1'] li strong").allTextContents();
+    const headings = await page.locator("section[data-finding-group] li strong").allTextContents();
     assert.equal(headings[0], "Safety condition observed", "safety finding is listed first");
     await page.getByRole("button", { name: "Generate estimate note" }).click();
     await page.getByLabel("Customer estimate note").waitFor();
@@ -148,7 +148,7 @@ async function noOverflow(page, label) {
     assert.equal(await page.evaluate(() => window.copiedNote), NOTE);
     assert.ok(!(await page.evaluate(() => window.copiedNote)).includes("PRIVATE"));
     // Deselecting a finding makes the draft stale and blocks copy
-    await page.locator("section[aria-label='System 1'] input[type=checkbox]").nth(1).uncheck();
+    await page.locator("section[data-finding-group] input[type=checkbox]").nth(1).uncheck();
     assert.equal(await copy.isDisabled(), true, "changed selection makes the draft stale");
     await noOverflow(page, "summary");
     console.log("PASS summary ordering, six-key payload, no label leak, review-gated copy, stale on change");
@@ -172,7 +172,7 @@ async function noOverflow(page, label) {
     await page.goBack();
     await page.getByRole("link", { name: /Voice notes/ }).click();
     await page.getByLabel("Notes", { exact: true }).fill("Customer reports uneven cooling upstairs.");
-    await page.getByText("Saved to this job").waitFor();
+    await page.getByText(/Notes saved on this device/).waitFor();
     await page.waitForTimeout(300);
     await page.reload({ waitUntil: "networkidle" });
     assert.equal(await page.getByLabel("Notes", { exact: true }).inputValue(), "Customer reports uneven cooling upstairs.");

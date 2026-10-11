@@ -1,5 +1,5 @@
-import type { Finding, Job, JobSystem } from "./types";
-import { scopeKey } from "./types";
+import type { Finding, Job, JobSystem, JobComponent } from "./types";
+import { componentForTile, scopeForComponent, scopeKey } from "./types";
 
 export type ToolId =
   | "nameplate"
@@ -41,7 +41,7 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   explain: { id: "explain", label: "Customer note", description: "Write an estimate note from free-typed facts.", kind: "standalone" },
 };
 
-export type TileId = "condenser" | "furnace" | "attic" | "home";
+export type TileId = "condenser" | "furnace" | "attic" | "home" | "legacy";
 
 export type TileDef = {
   id: TileId;
@@ -60,38 +60,50 @@ export const TILES: TileDef[] = [
   { id: "home", label: "Whole home", description: "Load and general notes", scope: "home", tools: ["load", "photos", "notes"], expected: ["load"] },
 ];
 
+export const LEGACY_TILE: TileDef = { id: "legacy", label: "Unassigned legacy equipment", description: "Preserved evidence with unconfirmed component identity", scope: "system", tools: ["nameplate", "electrical", "charge", "furnace", "static", "airflow", "insulation", "duct", "photos", "notes"], expected: [] };
+
 export function tileById(id: string): TileDef | undefined {
-  return TILES.find((t) => t.id === id);
+  return id === "legacy" ? LEGACY_TILE : TILES.find((t) => t.id === id);
 }
 
 export function toolById(id: string): ToolDef | undefined {
   return (TOOLS as Record<string, ToolDef | undefined>)[id];
 }
 
-export type TileStatus = "not-started" | "in-progress" | "done" | "attention" | "safety";
+export type TileStatus = "not-started" | "in-progress" | "done" | "attention" | "safety" | "needs-review";
 
 /**
  * Tile status is derived from the job, never stored.
  * safety: any safety finding in the tile. attention: any concern. done: all expected findings saved.
  * in-progress: some expected findings or equipment saved. not-started: nothing yet.
  */
-export function tileStatus(job: Job, tile: TileDef, system: JobSystem | null): TileStatus {
-  const scopeId = tile.scope === "home" ? "home" : system ? scopeKey({ kind: "system", systemId: system.id }) : "";
-  const findings: Finding[] = job.findings.filter((f) => scopeKey(f.scope) === scopeId && tile.expected.includes(f.key));
+export function tileStatus(job: Job, tile: TileDef, system: JobSystem | null, resolvedComponent?: JobComponent | null): TileStatus {
+  const component = resolvedComponent !== undefined ? resolvedComponent : system ? componentForTile(system, tile.id) : undefined;
+  const scopeId = tile.scope === "home" ? "home" : system && component ? scopeKey(scopeForComponent(system, component)) : "";
+  const findings: Finding[] = job.findings.filter((f) => scopeKey(f.scope) === scopeId && tile.tools.includes(f.toolId as ToolId));
   if (findings.some((f) => f.severity === "safety")) return "safety";
+  if (findings.some((f) => f.staleAt)) return "needs-review";
   if (findings.some((f) => f.severity === "concern")) return "attention";
-  const have = new Set(findings.map((f) => f.key));
-  if (tile.expected.every((k) => have.has(k))) return "done";
-  const hasEquipment = tile.tools.includes("nameplate") && !!system && Object.keys(system.equipment).length > 0;
-  return have.size > 0 || hasEquipment ? "in-progress" : "not-started";
+  const have = new Set(findings.filter(f => !f.staleAt && tile.expected.includes(f.key)).map((f) => f.key));
+  if (tile.expected.length > 0 && tile.expected.every((k) => have.has(k))) return "done";
+  const hasEquipment = tile.tools.includes("nameplate") && !!system && Object.keys(component?.equipment ?? {}).length > 0;
+  return findings.length > 0 || hasEquipment ? "in-progress" : "not-started";
 }
 
-export function tileStatusLabel(status: TileStatus, tile: TileDef, job: Job, system: JobSystem | null): string {
-  const scopeId = tile.scope === "home" ? "home" : system ? scopeKey({ kind: "system", systemId: system.id }) : "";
-  const saved = new Set(job.findings.filter((f) => scopeKey(f.scope) === scopeId && tile.expected.includes(f.key)).map((f) => f.key)).size;
+export function tileStatusLabel(status: TileStatus, tile: TileDef, job: Job, system: JobSystem | null, resolvedComponent?: JobComponent | null): string {
+  const component = resolvedComponent !== undefined ? resolvedComponent : system ? componentForTile(system, tile.id) : undefined;
+  const scopeId = tile.scope === "home" ? "home" : system && component ? scopeKey(scopeForComponent(system, component)) : "";
+  const saved = new Set(job.findings.filter((f) => scopeKey(f.scope) === scopeId && tile.expected.includes(f.key) && !f.staleAt).map((f) => f.key)).size;
+  const stale = job.findings.some(f => scopeKey(f.scope) === scopeId && tile.tools.includes(f.toolId as ToolId) && !!f.staleAt);
+  if (tile.id === "legacy") {
+    const preserved = job.findings.filter(f => scopeKey(f.scope) === scopeId).length;
+    return `${preserved} preserved ${preserved === 1 ? "finding" : "findings"}${status === "safety" ? " · Safety finding" : ""}${stale ? " · Needs review" : ""}`;
+  }
   switch (status) {
     case "safety":
-      return "Safety finding";
+      return stale ? "Safety finding · Needs review" : "Safety finding";
+    case "needs-review":
+      return `Needs review · ${saved} of ${tile.expected.length} current`;
     case "attention":
       return "Needs attention";
     case "done":

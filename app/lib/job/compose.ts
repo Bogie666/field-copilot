@@ -1,9 +1,12 @@
 import { EXPLANATION_URGENCIES, MAX_EXPLANATION_FIELD_CHARS, validateExplanationInput, type ExplanationInput } from "../fieldAi";
-import type { Finding, Reading } from "./types";
+import type { Finding, JobSystem, Reading } from "./types";
+import { safeScopeLabel } from "./provenance";
 
 export type Urgency = (typeof EXPLANATION_URGENCIES)[number];
 
 export type ComposeOptions = {
+  /** Identity order only. User labels, equipment records and notes are never copied to AI. */
+  systems?: JobSystem[];
   equipmentType?: string;
   /** Years, typed by the technician. Never decoded from a serial number. */
   equipmentAge?: number | null;
@@ -49,22 +52,35 @@ export function composeExplanationInput(findings: Finding[], options: ComposeOpt
 
   const sorted = [...findings].sort((a, b) => ORDER[a.severity] - ORDER[b.severity] || a.title.localeCompare(b.title));
 
-  const diagnosis = sorted
-    .map((f) => f.diagnosis.trim())
-    .filter(Boolean)
+  const fallbackSystemIds = [...new Set(findings.flatMap(f => f.scope.kind === "system" ? [f.scope.systemId] : []))].sort();
+  const labeled = sorted.map((finding, index) => ({
+    finding,
+    label: `[${safeScopeLabel(finding.scope, options.systems ?? [], fallbackSystemIds, findings.map(finding => finding.scope))} / Finding ${index + 1}]`,
+  }));
+  const diagnosis = labeled
+    .filter(({ finding }) => finding.diagnosis.trim())
+    .map(({ finding, label }) => `${label} ${finding.diagnosis.trim()}`)
     .join("\n");
 
-  const readings = sorted
-    .map((f) => {
-      const lines = f.readings.map(formatReading);
-      if (f.reference?.trim()) lines.push(`Reference: ${f.reference.trim()}`);
-      return lines.length ? `${f.title}: ${lines.join("; ")}` : "";
+  const readings = labeled
+    .map(({ finding, label }) => {
+      const lines = finding.readings.map(formatReading);
+      if (finding.reference?.trim()) lines.push(`Reference: ${finding.reference.trim()}`);
+      return lines.length ? `${label} ${lines.join("; ")}` : "";
     })
     .filter(Boolean)
     .join("\n");
 
-  const recommendation = sorted
-    .flatMap((f) => [f.safetyAction?.trim() ? `Safety action: ${f.safetyAction.trim()}` : "", f.recommendation?.trim() ?? ""])
+  const recommendation = labeled
+    .map(({ finding, label }) => {
+      const lines = [
+        finding.safetyAction?.trim() ? `Safety action: ${finding.safetyAction.trim()}` : "",
+        finding.actionTaken?.trim() ? `Action taken: ${finding.actionTaken.trim()}` : "",
+        finding.verification?.trim() ? `Verification: ${finding.verification.trim()}` : "",
+        finding.recommendation?.trim() ? `Next step: ${finding.recommendation.trim()}` : "",
+      ].filter(Boolean);
+      return lines.length ? `${label} ${lines.join("; ")}` : "";
+    })
     .filter(Boolean)
     .join("\n");
 

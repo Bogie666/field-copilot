@@ -1,5 +1,5 @@
 // Tiny external store so the app bar can show whether work is kept on this device.
-export type PersistenceState = "idle" | "saving" | "saved" | "volatile";
+export type PersistenceState = "idle" | "saving" | "saved" | "volatile" | "failed" | "conflict";
 
 let state: PersistenceState = "idle";
 let savedAt: number | null = null;

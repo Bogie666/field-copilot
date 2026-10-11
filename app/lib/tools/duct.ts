@@ -39,6 +39,9 @@ export function assessDuct(input: DuctInput): DuctAssessment {
   if (errors.length || cfm.ok !== true || width.ok !== true || height.ok !== true) return { errors, result: null };
   const context = { side: input.side, section: input.section };
   const velocity = velocityFromDuct(cfm.value, width.value, height.value);
+  if (!Number.isFinite(velocity) || velocity <= 0) {
+    return { errors: ["Derived duct velocity must be finite and greater than zero. Check airflow and dimensions."], result: null };
+  }
   const area = width.value * height.value;
   const target = targetVelocity(context);
   const band = ductVelocityState(context, velocity);

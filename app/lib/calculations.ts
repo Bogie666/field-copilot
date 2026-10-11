@@ -20,7 +20,9 @@ export function rectangularDuctHeight(cfm: number, velocityFpm: number, widthInc
 export function velocityFromDuct(cfm: number, widthInches: number, heightInches: number) {
   if (cfm <= 0 || widthInches <= 0 || heightInches <= 0) return 0;
   const areaSqFt = (widthInches * heightInches) / 144;
-  return roundTo(cfm / areaSqFt, 0);
+  // Classification and saved evidence use the unrounded value. Round only when
+  // formatting a display, otherwise near-boundary readings can change bands.
+  return cfm / areaSqFt;
 }
 
 export function equivalentRound(widthInches: number, heightInches: number) {

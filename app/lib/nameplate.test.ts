@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ageFromManufacturedDate } from "./nameplateEquipment";
 import {
   EMPTY_NAMEPLATE_CONFIDENCE,
   EMPTY_NAMEPLATE_FIELDS,
@@ -208,7 +209,105 @@ describe("parseNameplateText", () => {
     expect(result.fields.manufacturedDate).toBe("");
     expect(parseNameplateText("MFR DATE INSTALL DATE 9/2024").fields.manufacturedDate).toBe("");
     expect(parseNameplateText("MFR DATE SERVICE DATE 9/2024").fields.manufacturedDate).toBe("");
-    expect(parseNameplateText("DATE 8/2023").fields.manufacturedDate).toBe("8/2023");
+    expect(parseNameplateText("DATE 8/2023").fields.manufacturedDate).toBe("");
+  });
+
+
+  it.each([
+    ["HEAT PUMP", "Heat pump"],
+    ["TYPE: HEAT PUMP", "Heat pump"],
+    ["Equipment type\nHEAT PUMP", "Heat pump"],
+    ["UNIT TYPE = CONDENSING UNIT", "Air conditioner"],
+    ["AIR CONDITIONER", "Air conditioner"],
+    ["UL LISTED CENTRAL AIR CONDITIONER", "Air conditioner"],
+    ["SPLIT-SYSTEM AIR CONDITIONER", "Air conditioner"],
+    ["GAS FURNACE", "Gas furnace"],
+    ["NATURAL GAS FURNACE", "Gas furnace"],
+    ["ELECTRIC FURNACE", "Electric furnace"],
+    ["FURNACE", "Furnace"],
+    ["AIR HANDLER", "Air handler"],
+    ["FAN COIL UNIT", "Air handler"],
+    ["PACKAGED UNIT", "Packaged unit"],
+    ["DUCTLESS MINI-SPLIT", "Mini-split"],
+    ["WATER HEATER", "Water heater"],
+    ["EVAPORATOR COIL", "Evaporator coil"],
+    ["HOT WATER BOILER", "Boiler"],
+  ])("recognizes only the clear equipment heading/type field %s", (text, expected) => {
+    const result = parseNameplateText(text);
+    expect(result.fields.equipmentType).toBe(expected);
+    expect(result.evidence.equipmentType).toContain(text.split("\n")[0]);
+  });
+
+  it.each([
+    "not a heat pump", "HEAT PUMP COMPATIBLE", "TYPE: not a heat pump",
+    "EQUIPMENT TYPE: heat pump compatible", "For use with a gas furnace",
+    "AIR HANDLER ACCESSORY", "CONNECT TO AIR CONDITIONER", "MODEL: HEATPUMP1234",
+    "MANUFACTURER HEAT PUMP MODEL ABC123", "Electric furnace accessory",
+    "TYPE: GAS/ELECTRIC FURNACE", "Check furnace and heat pump wiring",
+  ])("does not promote an incidental or ambiguous type mention into a suggestion: %s", (text) => {
+    expect(parseNameplateText(text).fields.equipmentType).toBe("");
+  });
+
+  it.each([
+    "HEAT PUMP\nAIR CONDITIONER", "TYPE: HEAT PUMP / AIR CONDITIONER",
+    "GAS FURNACE OR BOILER", "GAS FURNACE\nELECTRIC FURNACE",
+  ])("keeps conflicting equipment types blank with a warning: %s", (text) => {
+    const result = parseNameplateText(text);
+    expect(result.fields.equipmentType).toBe("");
+    expect(result.confidence.equipmentType).toBe(0);
+    expect(result.conflicts).toContain("equipmentType");
+    expect(result.warnings).toContain("Conflicting equipment types were identified. Verify the printed value before selecting it.");
+  });
+
+  it("accepts repeated equivalent equipment headings without inferring a different type from instructions", () => {
+    const result = parseNameplateText("AIR HANDLER\nTYPE: FAN COIL UNIT\nFor use with heat pump or air conditioner");
+    expect(result.fields.equipmentType).toBe("Air handler");
+    expect(result.conflicts).toBeUndefined();
+  });
+
+  it.each([
+    ["MFG DATE: 2014", "2014", 12],
+    ["MFD: 2014-11", "2014-11", 11],
+    ["MFR DATE 08/2023", "08/2023", 3],
+    ["MFG. DATE 8/2023", "8/2023", 3],
+    ["MANUFACTURED 08-2023", "08-2023", 3],
+    ["MANUFACTURED ON 2014-10-12", "2014-10-12", 11],
+    ["MANUFACTURE DATE: 2014-10-11", "2014-10-11", 12],
+    ["MANUFACTURING DATE 2014-10-10", "2014-10-10", 12],
+    ["DATE OF MANUFACTURE: 2014-10-10", "2014-10-10", 12],
+    ["MFR DATE\n2014-10-12", "2014-10-12", 11],
+    ["MFR DATE\nPr\n2014-10-12", "2014-10-12", 11],
+    ["MFG DATE 2014-10-12 MODEL ABC123", "2014-10-12", 11],
+  ])("preserves the complete supported manufacture date from %s", (text, expected, years) => {
+    const result = parseNameplateText(text);
+    expect(result.fields.manufacturedDate).toBe(expected);
+    expect(ageFromManufacturedDate(result.fields.manufacturedDate, "2026-10-11T12:00:00Z")?.years).toBe(years);
+  });
+
+  it.each([
+    "08/09/2023", "8/23", "2023/08", "2023-8-9", "2023-13", "2023-02-30",
+    "2027-01-01", "2027", "2013 or 2014", "August 2023", "UNKNOWN", "202?",
+  ])("preserves unsupported, invalid, or future printed dates for review without making them usable: %s", (printed) => {
+    const result = parseNameplateText(`MFG DATE: ${printed}`);
+    expect(result.fields.manufacturedDate).toBe(printed);
+    expect(ageFromManufacturedDate(result.fields.manufacturedDate, "2026-10-11T12:00:00Z")).toBeNull();
+  });
+
+  it.each([
+    "DATE 2023-08-15", "INSTALL DATE 2023-08-15", "SERVICE DATE 2023-08-15",
+    "INSPECTION DATE 2023", "SERIAL: 20230815", "MODEL: TEST2023", "MANUFACTURED BY ACME 2023",
+    "MFR DATE\nSERVICE DATE\n2023", "MFR DATE\nOTHER FIELD: 2023\n2024",
+    "MFG DATE INSTALL DATE 2023", "MFG DATE 2023-08-15-09",
+  ])("requires genuine manufacture-date context and never decodes or truncates other values: %s", (text) => {
+    expect(parseNameplateText(text).fields.manufacturedDate).toBe("");
+  });
+
+  it("keeps conflicting manufacture dates blank with a review warning", () => {
+    const result = parseNameplateText("MFG DATE 2023-08-15\nMFR DATE 2023-08-16");
+    expect(result.fields.manufacturedDate).toBe("");
+    expect(result.conflicts).toContain("manufacturedDate");
+    expect(result.warnings).toContain("Conflicting manufacture dates were identified. Verify the printed value before selecting it.");
+    expect(parseNameplateText("MFG DATE 2023\nMANUFACTURED 2023").fields.manufacturedDate).toBe("2023");
   });
 
   it("uses a conservative fallback candidate when the model label is unreadable", () => {

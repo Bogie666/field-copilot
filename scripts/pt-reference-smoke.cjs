@@ -81,7 +81,7 @@ async function enter(page, c) {
     const text = await page.locator("body").innerText();
     assert.match(text, /Chemours/, "source must persist in saved finding");
     assert.match(text, /[Pp]rovisional|not approved/, "provisional classification must persist");
-    const checkbox = page.locator("section[aria-label='System 1'] li input[type=checkbox]").first();
+    const checkbox = page.locator("section[data-finding-group] li input[type=checkbox]").first();
     if (!(await checkbox.isChecked())) await checkbox.check();
     await page.getByText("What will be sent", { exact: true }).click();
     for (const width of [320, 390, 1280]) {

@@ -8,8 +8,12 @@ export default function SaveIndicator() {
   const { state, savedAt } = parsePersistenceSnapshot(snapshot);
   if (state === "idle") return null;
   const text =
-    state === "volatile"
-      ? "Not saved on this device"
+    state === "conflict"
+      ? "Save conflict: review changes"
+      : state === "failed"
+        ? "Save failed: retry needed"
+        : state === "volatile"
+      ? "Session only: not saved on device"
       : state === "saving"
         ? "Saving"
         : `Saved ${savedAt ? new Date(savedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : ""}`.trim();

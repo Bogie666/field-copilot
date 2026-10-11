@@ -26,6 +26,8 @@ export type NameplateExtraction = {
   evidence: NameplateEvidence;
   rawText: string;
   warnings: string[];
+  /** Conflicting printed values must not be rescued by another OCR pass. */
+  conflicts?: NameplateFieldKey[];
 };
 
 export const EMPTY_NAMEPLATE_FIELDS: NameplateFields = {
@@ -72,16 +74,117 @@ const MANUFACTURERS: Array<[RegExp, string]> = [
   [/\bAO\s*SMITH\b/i, "A. O. Smith"],
 ];
 
+// Whole headings/type fields only. A mention in instructions or compatibility text
+// does not identify the unit, and a generic furnace does not establish its fuel.
 const EQUIPMENT_TYPES: Array<[RegExp, string]> = [
-  [/\bHEAT\s*PUMP\b/i, "Heat pump"],
-  [/\bAIR\s*CONDITION(?:ER|ING)\b|\bCONDENSING\s+UNIT\b/i, "Air conditioner"],
-  [/\bGAS\s+FURNACE\b|\bFURNACE\b/i, "Furnace"],
-  [/\bAIR\s+HANDLER\b|\bFAN\s+COIL\b/i, "Air handler"],
-  [/\bPACKAGED\s+(?:UNIT|SYSTEM)\b/i, "Packaged unit"],
-  [/\bMINI[- ]?SPLIT\b|\bDUCTLESS\b/i, "Mini-split"],
-  [/\bWATER\s+HEATER\b/i, "Water heater"],
-  [/\bBOILER\b/i, "Boiler"],
+  [/^(?:(?:CENTRAL|SPLIT[- ]SYSTEM) )?HEAT ?PUMP(?: (?:UNIT|OUTDOOR UNIT))?$/i, "Heat pump"],
+  [/^(?:(?:CENTRAL|SPLIT[- ]SYSTEM) )?AIR CONDITION(?:ER|ING)(?: UNIT)?$|^CONDENSING UNIT$/i, "Air conditioner"],
+  [/^(?:(?:NATURAL|LP) )?GAS FURNACE$|^PROPANE FURNACE$/i, "Gas furnace"],
+  [/^ELECTRIC(?:AL)? FURNACE$/i, "Electric furnace"],
+  [/^FURNACE$/i, "Furnace"],
+  [/^AIR ?HANDLER$|^AIR HANDLING UNIT$|^FAN COIL(?: UNIT)?$/i, "Air handler"],
+  [/^PACKAGE[D]? (?:UNIT|SYSTEM)$/i, "Packaged unit"],
+  [/^(?:DUCTLESS )?MINI[- ]?SPLIT(?: SYSTEM)?$|^DUCTLESS(?: SYSTEM)?$/i, "Mini-split"],
+  [/^EVAPORATOR(?: COIL)?$/i, "Evaporator coil"],
+  [/^WATER HEATER$/i, "Water heater"],
+  [/^(?:(?:GAS|ELECTRIC|HOT WATER|STEAM) )?BOILER$/i, "Boiler"],
 ];
+const EQUIPMENT_TYPE_LABEL = /^(?:(?:EQUIPMENT|UNIT|SYSTEM|PRODUCT)\s+)?TYPE\b\s*[:#=.-]?\s*/i;
+const EQUIPMENT_MENTIONS = /\b(?:HEAT\s*PUMP|AIR\s*CONDITION(?:ER|ING)|CONDENSING\s+UNIT|(?:(?:NATURAL|LP)\s+)?GAS\s+FURNACE|PROPANE\s+FURNACE|ELECTRIC(?:AL)?\s+FURNACE|FURNACE|AIR\s*HANDLER|AIR\s+HANDLING\s+UNIT|FAN\s+COIL(?:\s+UNIT)?|PACKAGED?\s+(?:UNIT|SYSTEM)|(?:DUCTLESS\s+)?MINI[- ]?SPLIT(?:\s+SYSTEM)?|DUCTLESS(?:\s+SYSTEM)?|EVAPORATOR(?:\s+COIL)?|WATER\s+HEATER|(?:(?:GAS|ELECTRIC|HOT\s+WATER|STEAM)\s+)?BOILER)\b/gi;
+
+type PrintedCandidate = { value: string; line: string };
+
+function equipmentTypeCandidates(lines: string[]): PrintedCandidate[] {
+  const candidates: PrintedCandidate[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const label = EQUIPMENT_TYPE_LABEL.exec(line);
+    let heading = label ? line.slice(label[0].length) : line;
+    let evidence = line;
+    if (label && !heading) {
+      heading = lines[index + 1] || "";
+      evidence += ` ${heading}`;
+    }
+    heading = heading.replace(/^(?:(?:UL|ETL|CSA)\s+)?(?:LISTED|CERTIFIED)\s+/i, "").replace(/[.:;]+$/, "").trim();
+    const matched = EQUIPMENT_TYPES.find(([pattern]) => pattern.test(heading));
+    if (matched) {
+      candidates.push({ value: matched[1], line: evidence });
+      continue;
+    }
+
+    // A heading that lists alternatives is ambiguous, even if another pass
+    // drops one of those alternatives. Ignore unrelated instructional prose.
+    const mentions = Array.from(heading.matchAll(EQUIPMENT_MENTIONS));
+    const remainder = heading.replace(EQUIPMENT_MENTIONS, "").replace(/\b(?:OR|AND|CENTRAL|SPLIT[- ]SYSTEM)\b/gi, "").replace(/[\s/&,()+-]/g, "");
+    if (mentions.length > 1 && !remainder) {
+      for (const mention of mentions) {
+        const type = EQUIPMENT_TYPES.find(([pattern]) => pattern.test(mention[0]));
+        if (type) candidates.push({ value: type[1], line: evidence });
+      }
+    }
+  }
+  return candidates;
+}
+
+const MANUFACTURE_LABEL = /\b(?:(?:MFR|MFG|MFD)\.?(?:\s*DATE)?|MANUFACTURED(?:\s+(?:DATE|ON|IN))?|MANUFACTUR(?:E|ING)\s+DATE|DATE\s+OF\s+MANUFACTURE)\b/i;
+const DATE_FIELD_BOUNDARY = /\b(?:MODEL|M[O0]DEL|MOD|MDL|SERIAL|SER[I1L]AL|S\/N|INSTALL(?:ED|ATION)?|SERVICE|INSPECT(?:ED|ION)?|WARRANTY|REPAIR|REPLACED|DATE|MFR|MFG|MFD|MANUFACTURED|MANUFACTURE|MANUFACTURING|REFRIGERANT|VOLT(?:AGE|S?)?|PHASE|HZ|MCA|MOCP|RLA|LRA|CAPACITY|MAX(?:IMUM)?\s+(?:FUSE|BREAKER))\b/i;
+
+function printedDateCandidate(text: string): string {
+  // Preserve the entire printed date, including unsupported or invalid dates.
+  // The age helper validates it later; never turn 08/09/2023 into 08/09 or
+  // 2023-08-15 into 2023-08 and accidentally invent a usable manufacture date.
+  const value = text.replace(/^[\s:#=.|~-]+/, "").replace(/[\s,;.|]+$/, "").trim();
+  if (/^[\d?]{1,4}(?:\s*[/.-]\s*[\d?]{1,4}){0,2}(?:\s+(?:OR|TO)\s+[\d?]{1,4}(?:\s*[/.-]\s*[\d?]{1,4}){0,2})?$/i.test(value)) return value;
+  if (/^(?:JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?)\.?\s+(?:\d{1,2},?\s+)?\d{4}$/i.test(value)) return value;
+  if (/^(?:UNKNOWN|UNREADABLE|ILLEGIBLE|N\/A)$/i.test(value)) return value;
+  return "";
+}
+
+function manufacturedDateCandidates(lines: string[]): PrintedCandidate[] {
+  const candidates: PrintedCandidate[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    for (const label of lines[index].matchAll(new RegExp(MANUFACTURE_LABEL.source, "gi"))) {
+      const tail = lines[index].slice(label.index! + label[0].length);
+      const boundary = DATE_FIELD_BOUNDARY.exec(tail);
+      const value = printedDateCandidate(boundary ? tail.slice(0, boundary.index) : tail);
+      if (value) {
+        candidates.push({ value, line: lines[index] });
+        continue;
+      }
+      // Only a genuinely empty label may borrow a standalone value below it.
+      // Do not cross any other labeled field to find a nearby date.
+      if (tail.replace(/[^A-Z0-9]/gi, "")) continue;
+      for (let next = index + 1; next <= Math.min(index + 2, lines.length - 1); next += 1) {
+        if (DATE_FIELD_BOUNDARY.test(lines[next])) break;
+        const below = printedDateCandidate(lines[next]);
+        if (below) {
+          candidates.push({ value: below, line: lines.slice(index, next + 1).join(" ") });
+          break;
+        }
+        // Tolerate a short isolated OCR fragment (the real plate produces "Pr"),
+        // not an intervening instruction or a different unlabeled field.
+        if (!/^[^A-Z0-9]*[A-Z]{1,3}[^A-Z0-9]*$/i.test(lines[next])) break;
+      }
+    }
+  }
+  return candidates;
+}
+
+function setUnambiguousPrintedValue(
+  extraction: NameplateExtraction,
+  key: "equipmentType" | "manufacturedDate",
+  candidates: PrintedCandidate[],
+  confidence: number,
+) {
+  const values = new Set(candidates.map(({ value }) => value.toUpperCase()));
+  if (values.size > 1) {
+    (extraction.conflicts ??= []).push(key);
+    const label = key === "equipmentType" ? "equipment types" : "manufacture dates";
+    extraction.warnings.push(`Conflicting ${label} were identified. Verify the printed value before selecting it.`);
+  } else if (candidates[0]) {
+    setResult(extraction, key, candidates[0].value, confidence, candidates[0].line);
+  }
+}
 
 function clampConfidence(value: unknown): number {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -310,13 +413,7 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
     }
   }
 
-  for (const [pattern, equipmentType] of EQUIPMENT_TYPES) {
-    const line = lines.find((item) => pattern.test(item));
-    if (line) {
-      setResult(extraction, "equipmentType", equipmentType, 0.9, line);
-      break;
-    }
-  }
+  setUnambiguousPrintedValue(extraction, "equipmentType", equipmentTypeCandidates(lines), 0.9);
 
   const paired = pairedIdentifiers(lines);
   const model = paired.model || labeledValue(lines, MODEL_LABEL);
@@ -396,16 +493,7 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
   const capacity = firstPattern(lines, /\b(\d{2,6}(?:,\d{3})?)\s*(BTU(?:\/H|H)?|MBH)\b/i, (match) => `${match[1]} ${match[2].toUpperCase()}`);
   if (capacity) setResult(extraction, "capacity", capacity.value, 0.86, capacity.line);
 
-  const manufacturedDate = firstPattern(
-    lines,
-    /^(?:DATE)\s*[:#=.-]?\s*((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b|\b(?:MFR|MFG|MFD|MANUFACTURED)\s*(?:DATE)?\s*[:#=.-]?\s*((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b/i,
-    (match) => match[1] || match[2],
-  ) || patternNearLabel(
-    lines,
-    /\b(?:MFR|MFG|MFD|MANUFACTURED)\s*(?:DATE)?\b/i,
-    /\b((?:0?[1-9]|1[0-2])[/-](?:19|20)?\d{2}|(?:19|20)\d{2}[/-](?:0?[1-9]|1[0-2]))\b/i,
-  );
-  if (manufacturedDate) setResult(extraction, "manufacturedDate", manufacturedDate.value, 0.82, manufacturedDate.line);
+  setUnambiguousPrintedValue(extraction, "manufacturedDate", manufacturedDateCandidates(lines), 0.82);
 
   if (!extraction.fields.model) extraction.warnings.push("No model number was identified. Verify the image is sharp and the full plate is visible.");
   if (!extraction.fields.serial) extraction.warnings.push("No serial number was identified. Enter it manually or retake the photo closer to the plate.");

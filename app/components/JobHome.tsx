@@ -2,13 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { newId } from "../lib/job/types";
-import { TILES, tileStatus, tileStatusLabel, type TileDef, type TileId, type TileStatus } from "../lib/job/registry";
+import { useRouter, useSearchParams } from "next/navigation";
+import { jobHref } from "../lib/job/routes";
+import { componentForTile, componentsForSystem, newId, scopeForComponent } from "../lib/job/types";
+import { TILES, tileStatus, tileStatusLabel, type TileDef, type TileStatus } from "../lib/job/registry";
 import { AtticIcon, CondenserIcon, FurnaceIcon, HomeIcon, PlusIcon } from "./Icons";
 import { useJob } from "./JobProvider";
-import { ActionBar, Chip, ConfirmDialog, Crumbs, PageHead, TextField } from "./ui";
+import { ActionBar, Callout, Chip, ConfirmDialog, Crumbs, EmptyState, PageHead, TextField } from "./ui";
 
-const GLYPH: Record<TileId, (props: { className?: string }) => React.ReactElement> = {
+const GLYPH: Record<string, (props: { className?: string }) => React.ReactElement> = {
   condenser: (p) => <CondenserIcon {...p} />,
   furnace: (p) => <FurnaceIcon {...p} />,
   attic: (p) => <AtticIcon {...p} />,
@@ -18,28 +20,40 @@ const GLYPH: Record<TileId, (props: { className?: string }) => React.ReactElemen
 function chipFor(status: TileStatus) {
   if (status === "safety") return <Chip tone="safety">Safety</Chip>;
   if (status === "attention") return <Chip tone="concern">Attention</Chip>;
+  if (status === "needs-review") return <Chip tone="concern">Needs review</Chip>;
   if (status === "done") return <Chip tone="ok">Done</Chip>;
   if (status === "in-progress") return <Chip tone="accent">In progress</Chip>;
   return null;
 }
 
 export default function JobHome() {
-  const { job, activeSystem, setActiveSystemId, dispatch } = useJob();
+  const { job, activeSystem: selectedSystem, setActiveSystemId, dispatch } = useJob();
+  const params = useSearchParams();
+  const router = useRouter();
+  const requestedSystem = params.get("system");
+  const activeSystem = requestedSystem ? job?.systems.find(s => s.id === requestedSystem) ?? null : selectedSystem;
+  function selectSystem(id: string) {
+    setActiveSystemId(id);
+    if (job) router.push(jobHref(job.id, undefined, undefined, { kind: "system", systemId: id }));
+  }
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [removing, setRemoving] = useState(false);
   const [editingLabel, setEditingLabel] = useState(false);
   const [label, setLabel] = useState("");
-  if (!job || !activeSystem) return null;
+  if (!job) return null;
+  if (!activeSystem) return <main className="page"><EmptyState title="Choose a system" body="The system in this link is no longer available. No other equipment has been selected automatically.">{job.systems.map(s => <button key={s.id} className="btn" type="button" onClick={() => selectSystem(s.id)}>{s.name}</button>)}</EmptyState></main>;
 
-  const findingCount = job.findings.length;
+  const findingCount = job.findings.filter(f => !f.staleAt).length;
+  const staleCount = job.findings.filter(f => f.staleAt).length;
+  const legacyComponents = componentsForSystem(activeSystem).filter(c => c.kind === "legacy");
   const safetyCount = job.findings.filter((f) => f.severity === "safety").length;
 
   function addSystem() {
     if (!job) return;
     const id = newId("sys");
     dispatch({ type: "addSystem", id, name: `System ${job.systems.length + 1}` });
-    setActiveSystemId(id);
+    selectSystem(id);
   }
 
   return (
@@ -82,7 +96,7 @@ export default function JobHome() {
 
       <div className="systemBar" role="group" aria-label="System">
         {job.systems.map((s) => (
-          <button key={s.id} className="segment" type="button" aria-pressed={s.id === activeSystem.id} onClick={() => setActiveSystemId(s.id)}>
+          <button key={s.id} className="segment" type="button" aria-pressed={s.id === activeSystem.id} onClick={() => selectSystem(s.id)}>
             {s.name}
           </button>
         ))}
@@ -96,8 +110,10 @@ export default function JobHome() {
         {TILES.map((tile: TileDef) => {
           const status = tileStatus(job, tile, tile.scope === "home" ? null : activeSystem);
           const Glyph = GLYPH[tile.id];
+          const component = componentForTile(activeSystem, tile.id);
+          if (tile.scope !== "home" && !component) return <div key={tile.id} className="tile"><span>{tile.label}: component unavailable</span></div>;
           return (
-            <Link key={tile.id} className={`tile ${tile.scope === "home" ? "" : ""}`} data-status={status} href={`/job/${job.id}/${tile.id}`} aria-label={`${tile.label}: ${tileStatusLabel(status, tile, job, activeSystem)}`}>
+            <Link key={tile.id} className={`tile ${tile.scope === "home" ? "" : ""}`} data-status={status} href={jobHref(job.id, tile.id, undefined, tile.scope === "home" ? { kind: "home" } : scopeForComponent(activeSystem, component!))} aria-label={`${tile.label}: ${tileStatusLabel(status, tile, job, activeSystem)}`}>
               <Glyph className="tileGlyph" />
               <span>
                 <span className="tileTitle">{tile.label}</span>
@@ -114,6 +130,10 @@ export default function JobHome() {
         })}
       </div>
 
+      {legacyComponents.length > 0 && <Callout title="Unassigned legacy equipment and evidence">
+        Earlier records have been preserved separately because their indoor/outdoor identity was not recorded.
+        {legacyComponents.map(legacy => <p key={legacy.id}><Link className="btn" href={jobHref(job.id, "legacy", undefined, scopeForComponent(activeSystem, legacy))}>Review {legacy.name.toLowerCase()}</Link></p>)}
+      </Callout>}
       <div className="btnRow noPrint" style={{ marginTop: 20 }}>
         <button
           className="btn"
@@ -159,19 +179,19 @@ export default function JobHome() {
       {removing && (
         <ConfirmDialog
           title={`Remove ${activeSystem.name}?`}
-          body={`Its findings, photos and notes will be deleted from this job. This cannot be undone.`}
+          body={`Its components, findings, previous confirmations, photos, notes and original-note history will be deleted from this job. This cannot be undone.`}
           confirmLabel="Remove system"
           onConfirm={() => {
             const next = job.systems.find((s) => s.id !== activeSystem.id);
             dispatch({ type: "removeSystem", systemId: activeSystem.id });
-            if (next) setActiveSystemId(next.id);
+            if (next) selectSystem(next.id);
             setRemoving(false);
           }}
           onCancel={() => setRemoving(false)}
         />
       )}
 
-      <ActionBar note={findingCount ? `${findingCount} saved ${findingCount === 1 ? "finding" : "findings"}${safetyCount ? `, ${safetyCount} safety` : ""}` : "Findings you save will collect here"}>
+      <ActionBar note={findingCount || staleCount ? `${findingCount} current ${findingCount === 1 ? "finding" : "findings"}${staleCount ? `, ${staleCount} need review` : ""}${safetyCount ? `, ${safetyCount} safety` : ""}` : "Findings you save will collect here"}>
         <Link className="btn primary" href={`/job/${job.id}/summary`}>
           Summary and customer note
         </Link>

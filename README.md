@@ -20,6 +20,7 @@ FIELD_COPILOT_AUTH_ENABLED=false npm run start -- -p 3000
 # In a second terminal:
 COPILOT_URL=http://127.0.0.1:3000 npm run smoke
 COPILOT_URL=http://127.0.0.1:3000 npm run smoke:regressions
+COPILOT_URL=http://127.0.0.1:3000 npm run smoke:integrity
 ```
 
 Set `CHROMIUM_PATH` to your installed Chromium binary. The regressions cover drafts/stale findings, late-response note protection, camera OCR, photo annotation with storage failure/retry, and published PT lookups with saved/AI provenance in both themes. OCR requires initial engine/language asset downloads; paid image analysis is not used.
@@ -58,12 +59,31 @@ See `.env.example` for AI provider and Basic auth settings.
 
 ## Architecture
 
-- `app/lib/job/`: domain. Job > JobSystem > Finding, a pure reducer, validation, tile status (derived, never stored), storage (IndexedDB, memory for tests).
+- `app/lib/job/`: domain. Job > JobSystem > Component > Finding, a pure reducer, validation, tile status (derived, never stored), storage (IndexedDB, memory for tests).
 - `app/lib/tools/`, `app/lib/charge/`: pure assessment code for each tool, with unit tests.
 - `app/components/tools/`: one component per tool, hosted by `ToolHost.tsx`. `SaveFinding.tsx` is the shared review and save step.
 - `app/api/`: `explain`, `structure-notes`, `nameplate-ocr`, `health`.
 - `proxy.ts`: optional Basic auth.
 
-Rules the code enforces: blank means blank, findings save only on an explicit Save, a safety finding needs a safety action (furnace and insulation also need a photo), the job label and photos never go to AI, over-long text is blocked rather than truncated, and equipment age is typed by the tech.
+Rules the code enforces: blank means blank, findings save only on an explicit Save, a safety finding needs a safety action (furnace and insulation also need a photo), the job label and photos never go to AI, over-long text is blocked rather than truncated, and equipment age comes from a technician-confirmed printed manufacture date or an explicit manual override. Serial numbers are never decoded for age.
 
 See `HANDOFF.md` for open decisions and unfinished work.
+
+## Record integrity and closeout
+
+- Indoor, outdoor and attic/ductwork components have separate equipment, findings, drafts, notes and photos. Links carry exact system/component IDs; missing or deleted identities require choosing equipment again.
+- Older system-level records remain available under **Unassigned legacy equipment**. Their physical component is not guessed or copied into both units.
+- Every browser-store write checks a revision in one transaction. A conflicting tab keeps a recoverable unsaved record and cannot silently replace the saved visit. Explicit save success waits for storage commit; session-only storage is labeled.
+- Ordinary findings can attach photos. Safety action/photo requirements remain in force. Record work actually done and verification separately from proposed next steps.
+- AI note tidying presents the original and proposed edit. Acceptance is explicit and retains the original locally. Composed findings preserve safe system/component associations without sending private job labels or images.
+- The summary offers deterministic office evidence and a technician-reviewed customer closeout without AI. Text/JSON downloads contain text and photo metadata; the private HTML report embeds available saved photos and lists missing images. These reports are not restorable backups.
+
+See [release gates](docs/release-gates.md) for technical approvals, public AI spending-control design and deferred offline/backup work. Current verification and browser-test limitations are recorded in [the handoff](HANDOFF.md).
+
+## Local save and evidence integrity
+
+Job writes use transactional revision checks. A conflicting tab cannot overwrite newer work or recreate a deleted job; editing pauses and offers an unsaved-record download before an explicit discard/reload. Failed/conflicting records are kept separately in device storage when available, with a per-tab recovery pointer for reloads. This recovery JSON contains text and photo references, not photo files, and is not a complete backup. If storage also rejects the recovery record, keep the tab open or download it immediately.
+
+Explicit finding/nameplate saves acknowledge the committed write. Session-only fallback still stores edits for navigation within the open tab, but closing or refreshing loses them. Device-storage startup failures disclose that existing jobs are unavailable, and a retry is offered before session-only jobs exist.
+
+Photo additions, replacements, removals, and system cleanup commit metadata and blobs together. Previous confirmations retain their original photo evidence: referenced historical photos cannot be removed or overwritten individually. Explicit system deletion removes that system's current findings, previous confirmations, drafts, notes, and photo evidence. Full job deletion removes all owned photos (including identifiable legacy history-only blobs) and saved recovery records. Deletion also checks the displayed revision, so an older confirmation cannot erase a newer visit record.

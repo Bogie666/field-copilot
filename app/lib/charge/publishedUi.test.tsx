@@ -1,11 +1,14 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import ChargeTool from "../../components/tools/ChargeTool";
 import { makeFinding } from "../job/fixtures";
 import { hashInputs } from "../job/types";
 import type { ToolContext } from "../../components/tools/context";
 import { EMPTY_CHARGE } from "./refrigerantCharge";
+
+// Photo evidence is covered separately; this static renderer tests reference provenance.
+vi.mock("../../components/tools/PhotoPicker", () => ({ default: () => null }));
 
 it("shows the selected actual source with technical approval still pending", () => {
   const html = renderToStaticMarkup(<ChargeTool ctx={{ toolId: "charge", api: null, scope: null, system: null, saved: makeFinding({ inputs: { ...EMPTY_CHARGE, refrigerant: "R-32" } }) }} />);

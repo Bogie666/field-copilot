@@ -40,11 +40,17 @@ export function fillNameplateBlanksFromOcr<T extends Record<string, string>>(
   passes: readonly string[],
   edited: ReadonlySet<string>,
 ): OcrReconciliation<T> {
-  const parsed: Array<Record<string, string>> = passes.map((text) => ({ ...parseNameplateText(text).fields, ...parseNameplateExtras(text) }));
+  const extractions = passes.map(parseNameplateText);
+  const parsed: Array<Record<string, string>> = extractions.map((result, index) => ({ ...result.fields, ...parseNameplateExtras(passes[index]) }));
+  const ambiguousFields = new Set<string>(extractions.flatMap((result) => result.conflicts ?? []));
   const next = { ...current };
   const conflicts: string[] = [];
   for (const key of Object.keys(current)) {
     if (current[key].trim() || edited.has(key)) continue;
+    if (ambiguousFields.has(key)) {
+      conflicts.push(key);
+      continue;
+    }
     const values = Array.from(new Map(
       parsed
         .map((result) => result[key]?.trim())
