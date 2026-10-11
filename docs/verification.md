@@ -1,16 +1,16 @@
 # Correction-pass verification
 
-Reviewed against main `9f9eebc7992e6029fc0f63dfaa2b454ec0c61608` on 11 October 2026. This branch has not been merged or deployed as part of this work.
+Reviewed against main `9f9eebc7992e6029fc0f63dfaa2b454ec0c61608` on 11 October 2026. This branch has not been merged or deployed to production. The existing Vercel integration automatically built a pull-request preview.
 
 ## Final local checks
 
-Final code check at `e82557a` passed:
+Final code check at `39cf4b3` passed:
 
-- `npm run verify`: TypeScript, ESLint, **711 tests across 52 files**, and the default Turbopack production build.
+- `npm run verify`: TypeScript, ESLint, **712 tests across 52 files**, and the default Turbopack production build.
 - `python3 scripts/generate-pt-data.py --check`: checked-in fixture and generated tables agree; technical approval is still pending.
 - `node --check` for every browser smoke script and `git diff --check`.
 
-Only documentation changed after that code check. Browser suites remain blocked as detailed below.
+Only documentation changed after that code check. Targeted cloud-browser checks passed; full scripted browser suites remain blocked as detailed below.
 
 ## Automated regression coverage
 
@@ -37,7 +37,22 @@ Independent review exercised migration collisions, delayed saves, recovery/expor
 
 The baseline smoke, regression entry point and new `smoke:integrity` suite were attempted with `/usr/bin/chromium`. All fail before opening the application: Chromium's process singleton cannot create its socket (`Operation not permitted`). The regression command stops at its first browser launch, so later constituent suites were not executed. This is an execution-environment blocker, not a passing browser result or a demonstrated application failure.
 
-Browser scripts were updated and syntax-checked. Real mobile rendering, camera/OCR downloads, full photo workflows, browser history and actual two-tab interaction still require a supported-browser run before release. Pure-domain and component callback tests do not replace that gate. No paid AI requests or production writes were made for validation.
+Browser scripts were updated and syntax-checked. The full scripted suites, real mobile rendering, camera/OCR downloads, complete photo attachment/markup and full history/navigation matrix still require a supported-browser run before release. Pure-domain and component callback tests do not replace that gate.
+
+### Targeted pull-request preview checks
+
+The cloud browser exercised the [automatically generated PR preview](https://field-copilot-git-fix-field-reco-5bb845-ryans-projects-5a781ef5.vercel.app/) using synthetic browser-local jobs. These targeted checks passed:
+
+- Separate indoor/outdoor nameplates, electrical readings, action and verification survive save/reload with visible system/component context.
+- Manufacture-date age labels preserve approximate precision, manual overrides survive date changes, and returning to calculated age plus predefined equipment type persists.
+- A `.5` nameplate reference seeds `0.5`; `.3 + .3` measures `0.60`, evaluates to `120%`, and shows Needs attention.
+- A changed nameplate marks the overview Needs review and excludes stale findings from customer-note selection.
+- Ordinary electrical findings expose an image/camera evidence picker. Actual file selection and upload were not exercised.
+- Deterministic closeout works without AI and includes pending reconfirmation; copy/download require review.
+- Two tabs retain the losing tab's local edit, protect the committed record, disable further conflicted editing, and restore canonical values after explicit discard/confirmation.
+- Captured browser warnings/errors were extension metadata messages, with no app-origin warning or error observed.
+
+This is targeted UI smoke, not a pass of the full automated suites. GitHub's Vercel status associated the preview build with the exact PR commit; direct `/api/health` navigation was browser-blocked, so the browser could not independently verify the running SHA. No paid AI requests, real customer records or production writes were used. The confusing initial nameplate reload footer found in this pass was corrected with a regression test; its final preview recheck is recorded in the PR.
 
 Run on a supported machine:
 

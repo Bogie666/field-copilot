@@ -5,7 +5,7 @@ import { prepareNameplateImage, type PreparedNameplateImage } from "../../lib/na
 import { EMPTY_NAMEPLATE_FIELDS, NAMEPLATE_FIELD_KEYS, type NameplateFieldKey } from "../../lib/nameplate";
 import { readDeviceNameplate, fillNameplateBlanks, fillNameplateBlanksFromOcr } from "../../lib/nameplateScan";
 import { ageFromManufacturedDate, EQUIPMENT_TYPES, matchEquipmentType } from "../../lib/nameplateEquipment";
-import { componentForScope, equipmentForScope } from "../../lib/job/types";
+import { componentForScope, equipmentForScope, scopeKey } from "../../lib/job/types";
 import { useFormState } from "./useFormState";
 import { Callout, SelectField, TextField } from "../ui";
 import { ActionBar } from "../ui";
@@ -31,7 +31,11 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
   const ageSuggestion = ageFromManufacturedDate(fields.manufacturedDate, new Date());
   const age = fields.ageMode === "manual" ? fields.age : ageSuggestion ? String(ageSuggestion.years) : "";
   const edits = useRef(0);
-  function setFields(update: (current: NameplateForm) => NameplateForm) { edits.current++; updateFields(update); setSaved(false); setSaveNote(""); }
+  const [editedSinceLoad, setEditedSinceLoad] = useState(false);
+  const hasDraft = !!ctx.scope && !!api?.job?.drafts?.some(draft => draft.toolId === "nameplate" && scopeKey(draft.scope) === scopeKey(ctx.scope!));
+  const loadedConfirmation = !editedSinceLoad && !hasDraft && (Object.keys(equipment).length > 0 || !!previousAge);
+  const initialSaveNote = loadedConfirmation ? "Previously confirmed equipment loaded. Review current values and age before confirming changes." : "Not saved yet";
+  function setFields(update: (current: NameplateForm) => NameplateForm) { edits.current++; setEditedSinceLoad(true); updateFields(update); setSaved(false); setSaveNote(""); }
   function acceptScanFields(next: NameplateForm, previous: NameplateForm): NameplateForm {
     // An uncertain OCR type stays unselected. Existing legacy/custom values are preserved.
     if (next.equipmentType !== previous.equipmentType) next.equipmentType = matchEquipmentType(next.equipmentType) ?? "";
@@ -202,7 +206,7 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
           hint={fields.ageMode === "manual" ? "Manual override kept. Manufacture-date changes will not replace it." : ageSuggestion ? `${ageSuggestion.label} Confirm the printed date before saving.` : fields.manufacturedDate.trim() ? "Age could not be calculated: check the date format and make sure it is not in the future. You can enter age manually." : "Age fills when a valid printed manufacture date is entered. Blank means unknown."} />
         {fields.ageMode === "manual" && ageSuggestion && <button className="btn" type="button" onClick={() => setFields(current => ({ ...current, ageMode: "date" }))}>Use age from manufacture date</button>}
       </div>
-      <ActionBar note={saving ? "Saving equipment…" : saved || saveNote ? saveNote : "Not saved yet"}>
+      <ActionBar note={saving ? "Saving equipment…" : saved || saveNote ? saveNote : initialSaveNote}>
         <button className="btn primary" type="button" onClick={() => void save()} disabled={saving || saved || busy}>{saving ? "Saving…" : saved ? "Saved" : "Save equipment"}</button>
       </ActionBar>
     </div>

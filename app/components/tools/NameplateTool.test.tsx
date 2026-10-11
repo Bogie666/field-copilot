@@ -149,3 +149,13 @@ it("clears a committed-save message as soon as the technician edits the plate ag
   expect(find(tree, props => props.note === "Not saved yet").note).toBe("Not saved yet");
   expect(button(tree, "Save equipment").disabled).toBe(false);
 });
+
+
+it("distinguishes a loaded confirmation from unsaved new nameplate inputs", () => {
+  const { ctx } = makeContext();
+  let tree = render(ctx);
+  expect(find(tree, props => typeof props.note === "string" && props.note.includes("Previously confirmed")).note).toMatch(/equipment loaded/);
+  change(field(tree, "Model"), "NEW-UNCONFIRMED");
+  tree = render(ctx);
+  expect(find(tree, props => props.note === "Not saved yet").note).toBe("Not saved yet");
+});
