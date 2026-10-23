@@ -9,6 +9,7 @@ import { useJob } from "./JobProvider";
 import { Callout, Crumbs, EmptyState, PageHead } from "./ui";
 import type { ToolContext } from "./tools/context";
 import { ToolHost } from "./tools/ToolHost";
+import SaveIndicator from "./SaveIndicator";
 
 export default function ToolPage() {
   const { id, tile: tileId, tool: toolParam } = useParams<{ id: string; tile: string; tool: string }>();
@@ -28,7 +29,7 @@ export default function ToolPage() {
   return (
     <main className="page">
       <Crumbs items={[{ href: "/", label: "Jobs" }, { href: jobHref(id, undefined, undefined, scope), label: job.label || "Job" }, { href: jobHref(id, tile.id, undefined, scope), label: tile.label }, { label: TOOLS[tool.id].label }]} />
-      <PageHead title={tool.label} lede={system ? `${system.name} · ${component!.name}. ${tool.description}` : tool.description} />
+      <PageHead title={tool.label} lede={system ? `${system.name} · ${component!.name}. ${tool.description}` : tool.description}><SaveIndicator /></PageHead>
       {component?.kind === "legacy" && <Callout title="Component identity not confirmed">This record predates component tracking. Its equipment and evidence remain unassigned. Do not treat these values as an indoor or outdoor nameplate without checking the physical equipment.</Callout>}
       <ToolHost key={`${job.id}:${scopeKey(scope)}:${tool.id}:${saved ? "saved" : "new"}`} ctx={ctx} />
     </main>

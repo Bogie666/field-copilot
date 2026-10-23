@@ -50,6 +50,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
   });
   const [activeSystemId, setActiveSystemId] = useState("");
   const urlsRef = useRef<Map<string, string>>(new Map());
+  const [photoUrlRevision, setPhotoUrlRevision] = useState(0);
   const { status, job, error } = snapshot;
 
   useEffect(() => {
@@ -95,6 +96,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
   const invalidateUrl = useCallback((id: string) => {
     const url = urlsRef.current.get(id);
     if (url) { URL.revokeObjectURL(url); urlsRef.current.delete(id); }
+    setPhotoUrlRevision(value => value + 1);
   }, []);
   const addPhoto = useCallback<JobApi["addPhoto"]>(async (blob, systemId, caption, componentId) => {
     try {
@@ -123,6 +125,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
   }, [session, invalidateUrl]);
   const getPhotoBlob = useCallback((photoId: string) => store.getPhoto(photoId), [store]);
   const getPhotoUrl = useCallback(async (photoId: string) => {
+    void photoUrlRevision;
     const cached = urlsRef.current.get(photoId);
     if (cached) return cached;
     const blob = await store.getPhoto(photoId);
@@ -130,7 +133,7 @@ export function JobProvider({ jobId, children, store: injectedStore }: { jobId: 
     const url = URL.createObjectURL(blob);
     urlsRef.current.set(photoId, url);
     return url;
-  }, [store]);
+  }, [store, photoUrlRevision]);
   const replacePhotoBlob = useCallback(async (photoId: string, blob: Blob) => {
     const jpeg = await compressImage(blob);
     await session.atomic(current => {

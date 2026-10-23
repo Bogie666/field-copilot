@@ -113,3 +113,27 @@ export function CheckIcon(props: IconProps) {
     </Svg>
   );
 }
+
+export function BriefcaseIcon(props: IconProps) {
+  return <Svg {...props}><rect x="6" y="14" width="36" height="27" rx="4" /><path d="M17 14v-4a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v4M6 24h36M20 24v4h8v-4" /></Svg>;
+}
+
+export function WrenchIcon(props: IconProps) {
+  return <Svg {...props}><path d="M29 8a12 12 0 0 0-13 16L6 34a5 5 0 0 0 8 8l10-10A12 12 0 0 0 40 19l-8 8-7-4-4-7 8-8Z" /></Svg>;
+}
+
+export function NotebookIcon(props: IconProps) {
+  return <Svg {...props}><rect x="11" y="6" width="30" height="36" rx="4" /><path d="M18 6v36M7 14h8M7 23h8M7 32h8M24 16h10M24 24h10" /></Svg>;
+}
+
+export function CameraIcon(props: IconProps) {
+  return <Svg {...props}><path d="M7 17h8l3-5h12l3 5h8v24H7Z" /><circle cx="24" cy="29" r="8" /></Svg>;
+}
+
+export function ChevronLeft(props: IconProps) {
+  return <Svg {...props}><path d="m30 10-14 14 14 14" /></Svg>;
+}
+
+export function MicrophoneIcon(props: IconProps) {
+  return <Svg {...props}><rect x="17" y="5" width="14" height="25" rx="7" /><path d="M11 24a13 13 0 0 0 26 0M24 37v7M17 44h14" /></Svg>;
+}

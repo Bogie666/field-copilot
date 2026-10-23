@@ -37,7 +37,7 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   duct: { id: "duct", label: "Duct sizing", description: "Area and velocity check for a duct run.", kind: "finding", findingKey: "duct" },
   load: { id: "load", label: "Load screening", description: "Rough cooling and heating load range for the home.", kind: "finding", findingKey: "load" },
   photos: { id: "photos", label: "Photos", description: "Take, mark up and attach photos.", kind: "media" },
-  notes: { id: "notes", label: "Voice notes", description: "Dictate notes and tidy them into sections.", kind: "notes" },
+  notes: { id: "notes", label: "Job notes", description: "Dictate job notes and tidy them into sections.", kind: "notes" },
   explain: { id: "explain", label: "Customer note", description: "Write an estimate note from free-typed facts.", kind: "standalone" },
 };
 

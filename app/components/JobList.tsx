@@ -9,7 +9,8 @@ import { JobConflictError } from "../lib/job/store";
 import type { JobStore } from "../lib/job/store";
 import { setPersistenceState } from "../lib/job/persistenceStatus";
 import { createJob, type JobSummary } from "../lib/job/types";
-import { ConfirmDialog, EmptyState, ListLink, PageHead, TextField, Chip } from "./ui";
+import { Chip, ConfirmDialog, EmptyState, PageHead, TextField } from "./ui";
+import SaveIndicator from "./SaveIndicator";
 
 const subscribeNever = () => () => undefined;
 
@@ -17,7 +18,8 @@ function when(iso: string): string {
   const d = new Date(iso);
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
-  return sameDay ? `Today, ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : d.toLocaleDateString([], { month: "short", day: "numeric" });
+  const date = sameDay ? "Today" : d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
+  return `${date} · ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
 }
 
 export default function JobList() {
@@ -95,17 +97,18 @@ export default function JobList() {
 
   return (
     <main className="page">
-      <PageHead title="Start a job" lede="Each job keeps its readings on this device. AI features send only the inputs you explicitly submit." />
+      <PageHead title="Jobs" lede={`${jobs?.length ?? 0} on this device`}><SaveIndicator /></PageHead>
+      <h2 className="sectionLabel">Start job</h2>
       <form
-        className="panel"
+        className="jobStartRow"
         onSubmit={(e) => {
           e.preventDefault();
           void start();
         }}
       >
         <TextField label="Job label (optional)" value={label} onChange={setLabel} maxLength={80} hint="A street name or short reminder for you. It stays on this device and is never sent to an AI provider." />
-        <button className="btn primary block" type="submit" disabled={creating || !store}>
-          {creating ? "Starting" : "Start job"}
+        <button className="btn primary" type="submit" disabled={creating || !store}>
+          {creating ? "Starting" : "Start"}
         </button>
       </form>
       {error && (
@@ -119,7 +122,7 @@ export default function JobList() {
         <p>{store.storageWarning || "Changes are kept only while this tab stays open. Closing or refreshing it will lose them."}</p>
         {jobs.length === 0 && store.retryPersistentStorage && <button type="button" className="btn" onClick={() => void retryStorage()}>Retry device storage</button>}
       </div>}
-      <h2 style={{ margin: "26px 0 12px" }}>Recent jobs</h2>
+      <h2 className="sectionLabel">Recent</h2>
       {jobs === null ? (
         <p className="hint" role="status">
           Loading jobs
@@ -127,16 +130,16 @@ export default function JobList() {
       ) : jobs.length === 0 ? (
         <EmptyState title={store?.persistent ? "No jobs on this device yet" : "No jobs in this session"} body={store?.persistent ? "Start a job above. It will show up here so you can pick it back up." : "Saved device jobs may be unavailable. New session-only jobs will appear here until this tab closes or refreshes."} />
       ) : (
-        <ul className="list">
+        <ul className="jobLedger">
           {jobs.map((job) => (
-            <li key={job.id} style={{ display: "grid", gap: 6 }}>
-              <ListLink
-                href={`/job/${job.id}`}
-                title={job.label || "Untitled job"}
-                meta={`${when(job.updatedAt)}, ${job.findingCount} ${job.findingCount === 1 ? "finding" : "findings"} across ${job.systemCount} ${job.systemCount === 1 ? "system" : "systems"}`}
-                right={job.safetyCount > 0 ? <Chip tone="safety">Safety</Chip> : undefined}
-              />
-              <button className="btn ghost" type="button" style={{ minHeight: 36, justifySelf: "end" }} disabled={removing} onClick={() => setDeleting(job)} aria-label={`Delete ${job.label || "untitled job"}`}>
+            <li key={job.id} className="jobLedgerRow">
+              <time dateTime={job.updatedAt}>{when(job.updatedAt)}</time>
+              <Link className="jobLedgerLink" href={`/job/${job.id}`}>
+                <strong>{job.label || "Untitled job"}</strong>
+                <span>{job.findingCount} {job.findingCount === 1 ? "finding" : "findings"} · {job.systemCount} {job.systemCount === 1 ? "system" : "systems"}</span>
+              </Link>
+              <span className="jobLedgerStatus">{job.safetyCount > 0 ? <Chip tone="safety">Safety</Chip> : job.findingCount > 0 ? <Chip tone="accent">In progress</Chip> : <Chip>Started</Chip>}</span>
+              <button className="jobDelete" type="button" disabled={removing} onClick={() => setDeleting(job)} aria-label={`Delete ${job.label || "untitled job"}`}>
                 Delete
               </button>
             </li>
@@ -146,6 +149,7 @@ export default function JobList() {
       <p className="hint" style={{ marginTop: 24 }}>
         Need a single tool without a job? <Link href="/tools">Open the tool list</Link>.
       </p>
+      <p className="screeningLine">Findings are screening results for technician review.</p>
       {deleting && (
         <ConfirmDialog
           title="Delete this job?"

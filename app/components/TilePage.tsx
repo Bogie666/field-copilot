@@ -7,6 +7,7 @@ import { TOOLS, tileById, tileStatus, tileStatusLabel } from "../lib/job/registr
 import { jobHref, resolveRouteScope } from "../lib/job/routes";
 import { useJob } from "./JobProvider";
 import { Callout, Chip, Crumbs, EmptyState, ListLink, PageHead, SeverityChip } from "./ui";
+import SaveIndicator from "./SaveIndicator";
 
 export default function TilePage() {
   const { id, tile: tileId } = useParams<{ id: string; tile: string }>();
@@ -22,9 +23,9 @@ export default function TilePage() {
   const photoCount = job.photos.filter(p => photoMatchesScope(p, scope)).length;
 
   return (
-    <main className="page">
+    <main className="page" data-page-status={status}>
       <Crumbs items={[{ href: "/", label: "Jobs" }, { href: jobHref(id, undefined, undefined, scope), label: job.label || "Job" }, { label: tile.label }]} />
-      <PageHead title={tile.label} lede={system ? `${system.name}. ${tileStatusLabel(status, tile, job, system, component)}.` : "Applies to the whole home."} />
+      <PageHead title={tile.label} lede={system ? `${system.name}. ${tileStatusLabel(status, tile, job, system, component)}.` : "Applies to the whole home."}><SaveIndicator /></PageHead>
       {component?.kind === "legacy" && <Callout title="Unassigned legacy evidence">These fields and records have been preserved without guessing which physical component they describe. Check the actual unit before recording or confirming data under a condenser, furnace or attic component.</Callout>}
       <ul className="list">
         {tile.tools.map(toolId => {

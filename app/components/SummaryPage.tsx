@@ -11,6 +11,7 @@ import { customerCloseoutText, EXPORT_LIMITS, findingId, officeEvidenceRecord, o
 import { exportOfficeHtml, HTML_EXPORT_LIMITS } from "../lib/job/htmlReport";
 import { safeScopeLabel } from "../lib/job/provenance";
 import ExplanationPanel from "./ExplanationPanel";
+import SaveIndicator from "./SaveIndicator";
 import { useJob } from "./JobProvider";
 import { Callout, Crumbs, EmptyState, PageHead, Plate, SelectField, SeverityChip, TextField } from "./ui";
 
@@ -66,7 +67,8 @@ export default function SummaryPage() {
 
   const groupMap = new Map<string, { id: string; title: string; findings: Finding[] }>();
   for (const finding of sortedAll) {
-    const id = scopeKey(finding.scope);
+    // Keep every safety row ahead of all other rows, even when findings span scopes.
+    const id = `${finding.severity === "safety" ? "0-safety" : "1-standard"}:${scopeKey(finding.scope)}`;
     const system = finding.scope.kind === "system" ? job.systems.find(system => finding.scope.kind === "system" && system.id === finding.scope.systemId) : null;
     const component = finding.scope.kind === "system" ? system?.components?.find(component => finding.scope.kind === "system" && component.id === finding.scope.componentId) : null;
     const title = `${safeScopeLabel(finding.scope, job.systems)}${system ? `: ${system.name}` : ""}${component ? ` / ${component.name}` : ""}`;
@@ -107,10 +109,21 @@ export default function SummaryPage() {
     finally { setExportingPhotos(false); }
   }
 
+  const closeoutSection = <section className="panel closeoutPanel" aria-label="Customer closeout without AI">
+    <h2>Customer closeout without AI</h2>
+    <p className="hint">Uses the selected current findings, with every current safety finding and all pending reconfirmation notices always included. No AI request is needed. Private job labels, equipment identifiers, notes, history and photos are excluded. Review finding text for private details before sharing.</p>
+    <label className="field">Customer visit summary<textarea aria-label="Customer visit summary" value={customerCloseout} readOnly /></label>
+    <label className="check"><input type="checkbox" checked={closeoutReviewed} onChange={event => setReviewedCloseout(event.target.checked ? customerCloseout : null)} /><span>I reviewed this summary against the documented facts, pending checks and safety actions.</span></label>
+    <div className="btnRow">
+      <button className="btn primary" type="button" disabled={!closeoutReviewed} onClick={() => { copyText(customerCloseout).then(() => setCopyMessage("Customer visit summary copied."), () => setCopyMessage("Copy failed. Download the summary instead.")); }}>Copy customer visit summary</button>
+      <button className="btn" type="button" disabled={!closeoutReviewed} onClick={() => downloadReport("customer")}>Download customer summary</button>
+    </div>
+  </section>;
+
   return (
-    <main className="page">
+    <main className="page summaryPage">
       <Crumbs items={[{ href: "/", label: "Jobs" }, { href: `/job/${job.id}`, label: job.label || "Job" }, { label: "Summary" }]} />
-      <PageHead title="Summary" lede="Review the visit, download private office evidence, and prepare a customer summary with or without AI." />
+      <PageHead title="Summary" lede="Review the visit, download private office evidence, and prepare a customer summary with or without AI."><SaveIndicator /></PageHead>
 
       {job.findings.length === 0 ? (
         <EmptyState title="No findings saved yet" body="Open a tile, run a tool and save the result. Saved findings collect here.">
@@ -151,7 +164,7 @@ export default function SummaryPage() {
                         <p>{f.diagnosis}</p>
                         {f.readings.length > 0 && (
                           <details>
-                            <summary style={{ cursor: "pointer", minHeight: 36, display: "flex", alignItems: "center" }}>Readings</summary>
+                            <summary>Readings</summary>
                             <Plate rows={f.readings.map((r) => ({ label: r.label, value: String(r.value), unit: r.unit }))} />
                             {f.reference && <p className="hint" style={{ marginTop: 6 }}>Reference: {f.reference}</p>}
                           </details>
@@ -177,26 +190,20 @@ export default function SummaryPage() {
             <SelectField label="Documented urgency (optional)" value={urgency} onChange={(v) => setUrgencyChoice(v as Urgency)} options={EXPLANATION_URGENCIES.map((u) => ({ value: u, label: u }))} hint={`Suggested from the selected findings: ${suggested}. Urgency is not inferred from age.`} />
           </section>
 
-          <ExplanationPanel input={composed.input} issues={issues} safetyPresent={safetyChosen} />
+          <div className="closeoutPair">
+            {closeoutSection}
+            <ExplanationPanel input={composed.input} issues={issues} safetyPresent={safetyChosen} />
+          </div>
 
 
         </>
       )}
-      <section className="panel" aria-label="Customer closeout without AI">
-        <h2>Customer closeout without AI</h2>
-        <p className="hint">Uses the selected current findings, with every current safety finding and all pending reconfirmation notices always included. No AI request is needed. Private job labels, equipment identifiers, notes, history and photos are excluded. Review finding text for private details before sharing.</p>
-        <label className="field">Customer visit summary<textarea aria-label="Customer visit summary" value={customerCloseout} readOnly style={{ minHeight: 280 }} /></label>
-        <label className="check"><input type="checkbox" checked={closeoutReviewed} onChange={event => setReviewedCloseout(event.target.checked ? customerCloseout : null)} /><span>I reviewed this summary against the documented facts, pending checks and safety actions.</span></label>
-        <div className="btnRow">
-          <button className="btn primary" type="button" disabled={!closeoutReviewed} onClick={() => { copyText(customerCloseout).then(() => setCopyMessage("Customer visit summary copied."), () => setCopyMessage("Copy failed. Download the summary instead.")); }}>Copy customer visit summary</button>
-          <button className="btn" type="button" disabled={!closeoutReviewed} onClick={() => downloadReport("customer")}>Download customer summary</button>
-        </div>
-      </section>
+      {job.findings.length === 0 && closeoutSection}
       <section className="panel" aria-label="Private office evidence">
         <h2>Private office evidence</h2>
         <p className="hint">Includes equipment, readings and sources, actions, verification, notes, previous findings, accepted note originals, unconfirmed drafts, references and photo metadata. It includes private job labels and equipment identifiers; review the recipient before sharing.</p>
         <p className="hint">{REPORT_LIMITS} {EXPORT_LIMITS}</p>
-        <div className="btnRow">
+        <div className="btnRow evidenceActions">
           <button className="btn" type="button" onClick={() => { copyText(officeEvidenceText(job)).then(() => setCopyMessage("Private office evidence copied. Images are not included."), () => setCopyMessage("Copy failed. Download the report instead.")); }}>Copy office evidence</button>
           <button className="btn" type="button" onClick={() => downloadReport("office")}>Download office report (.txt)</button>
           <button className="btn" type="button" onClick={() => downloadReport("structured")}>Download structured evidence (.json)</button>

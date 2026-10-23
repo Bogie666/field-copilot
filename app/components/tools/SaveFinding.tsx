@@ -30,13 +30,15 @@ type Props = {
   /** Offered through a button. Never filled in without the tech pressing it. */
   suggestedRecommendation?: string;
   suggestedSafetyAction?: string;
+  /** Adds a direct camera/file action beside Save in job mode. */
+  showPhotoAction?: boolean;
 };
 
 /**
  * Review step shared by every finding tool: optional next step, a required safety action
  * for safety results, then Save. Nothing is written until the tech presses Save.
  */
-export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedRecommendation, suggestedSafetyAction }: Props) {
+export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedRecommendation, suggestedSafetyAction, showPhotoAction }: Props) {
   const { api, saved, scope, toolId } = ctx;
   const [review, setReview] = useFormState(ctx, { recommendation: "", safetyAction: "", actionTaken: "", verification: "", photoIds: [] as string[] }, undefined, {
     slot: "review",
@@ -53,6 +55,7 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
   const current = outcome && outcome.hash === saveStamp ? outcome : null;
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const photoInputId = `finding-photo-${toolId}`;
   const errors = current?.errors ?? [];
   const message = current?.message ?? "";
 
@@ -151,7 +154,7 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
             Use suggested wording (edit to match what you did)
           </button>
         )}
-        <PhotoPicker scope={scope} selected={photoIds} onChange={setPhotoIds} required={isSafety && built.requiresPhotoForSafety} />
+        <PhotoPicker inputId={photoInputId} scope={scope} selected={photoIds} onChange={setPhotoIds} required={isSafety && built.requiresPhotoForSafety} />
         <TextField label="Action taken (optional)" value={actionTaken} onChange={(value) => setReview("actionTaken", value)} multiline maxLength={2000} hint="Record only work actually performed. Leave blank if no action was taken." />
         <TextField label="Verification after action (optional)" value={verification} onChange={(value) => setReview("verification", value)} multiline maxLength={2000} hint="Record the recheck and its result, or why verification is still pending. Blank means not documented." />
         <TextField label="Recommended next step (optional)" value={recommendation} onChange={setRecommendation} multiline hint="Only write what you recommend. The customer note never invents a recommendation." />
@@ -164,6 +167,7 @@ export default function SaveFinding({ ctx, built, hash, safetyPrompt, suggestedR
         <ErrorList errors={errors} />
       </section>
       <ActionBar note={saving ? "Saving finding…" : message || (unchanged ? (api.persistent ? "Saved on this device" : "Kept for this session only") : saved ? "You have unsaved changes" : blocked ? (missingSafety ? "Add the safety action to save" : missingPhoto ? "Attach a photo to save" : "Review the current readings and references to reconfirm") : "Not saved yet")}>
+        {showPhotoAction && <label className="btn actionPhoto" htmlFor={photoInputId}>Photo</label>}
         <button className="btn primary" type="button" onClick={() => void save()} disabled={saving || blocked || unchanged}>
           {saving ? "Saving…" : unchanged ? "Saved" : stale ? "Reconfirm finding" : saved ? "Update finding" : "Save finding"}
         </button>

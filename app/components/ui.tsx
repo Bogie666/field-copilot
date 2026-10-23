@@ -1,19 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useId, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { Severity } from "../lib/job/types";
-import { ChevronRight } from "./Icons";
+import { ChevronLeft, ChevronRight } from "./Icons";
 
 export function Crumbs({ items }: { items: Array<{ href?: string; label: string }> }) {
+  const parent = [...items].reverse().find((item, index) => index > 0 && item.href) ?? items.find(item => item.href);
+  if (!parent?.href) return null;
   return (
-    <nav className="crumbs" aria-label="Breadcrumb">
-      {items.map((item, i) => (
-        <Fragment key={`${item.label}-${i}`}>
-          {i > 0 && <span aria-hidden="true">/</span>}
-          {item.href ? <Link href={item.href}>{item.label}</Link> : <span aria-current="page">{item.label}</span>}
-        </Fragment>
-      ))}
+    <nav className="crumbs" aria-label="Back">
+      <Link href={parent.href}><ChevronLeft />{parent.label}</Link>
     </nav>
   );
 }
@@ -21,6 +18,7 @@ export function Crumbs({ items }: { items: Array<{ href?: string; label: string 
 export function PageHead({ title, lede, children }: { title: string; lede?: string; children?: ReactNode }) {
   return (
     <div className="pageHead">
+      <span className="headAccent" aria-hidden="true" />
       <h1>{title}</h1>
       {lede && <p className="lede">{lede}</p>}
       {children}

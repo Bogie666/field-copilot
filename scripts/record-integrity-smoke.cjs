@@ -16,8 +16,8 @@ const base = process.env.COPILOT_URL || 'http://127.0.0.1:3000';
   try {
     await page.goto(base);
     await page.getByLabel('Job label (optional)').fill('Synthetic record-integrity regression');
-    await page.getByRole('button', { name: 'Start job', exact: true }).click();
-    await page.getByRole('heading', { name: 'What are we working on?' }).waitFor();
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await page.getByRole('heading', { name: 'Synthetic record-integrity regression', exact: true }).waitFor();
     const jobPath = new URL(page.url()).pathname;
     const jobId = jobPath.split('/').pop();
     const readJob = () => page.evaluate(id => new Promise((resolve, reject) => {

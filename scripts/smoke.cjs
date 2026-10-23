@@ -46,10 +46,10 @@ async function noOverflow(page, label) {
   try {
     // 1. Start a job
     await page.goto(BASE, { waitUntil: "networkidle" });
-    await page.getByRole("heading", { name: "Start a job" }).waitFor();
+    await page.getByRole("heading", { name: "Jobs", exact: true }).waitFor();
     await page.getByLabel("Job label (optional)").fill("Smoke test, 12 Oak Lane");
-    await page.getByRole("button", { name: "Start job" }).click();
-    await page.getByRole("heading", { name: "What are we working on?" }).waitFor();
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByRole("heading", { name: "Smoke test, 12 Oak Lane", exact: true }).waitFor();
     const jobUrl = page.url();
     for (const tile of ["Condenser", "Furnace or air handler", "Attic and ductwork", "Whole home"]) {
       await page.getByRole("link", { name: new RegExp(tile) }).waitFor();
@@ -85,6 +85,7 @@ async function noOverflow(page, label) {
     await page.getByText("Provisional pressure-temperature data").waitFor();
     await page.getByLabel("Refrigerant").selectOption("R-410A");
     await page.getByLabel("Metering device").selectOption("txv");
+    await page.getByText("More fields", { exact: true }).click();
     await page.getByLabel("Suction pressure (psig)").fill("118");
     await page.getByLabel("Suction line temp (F)").fill("52");
     await page.getByLabel("Liquid pressure (psig)").fill("418");
@@ -127,7 +128,7 @@ async function noOverflow(page, label) {
     await page.getByRole("link", { name: /Furnace or air handler: Safety finding/ }).waitFor();
 
     // 7. Summary: safety first, compose payload has exactly six keys and no job label
-    await page.getByRole("link", { name: /Summary and customer note/ }).click();
+    await page.getByRole("link", { name: /Summary & customer note/ }).click();
     await page.getByRole("heading", { name: "Summary", exact: true }).waitFor();
     const headings = await page.locator("section[data-finding-group] li strong").allTextContents();
     assert.equal(headings[0], "Safety condition observed", "safety finding is listed first");
@@ -170,7 +171,7 @@ async function noOverflow(page, label) {
     await page.getByRole("button", { name: "Save finding" }).click();
     await page.getByRole("button", { name: "Saved" }).waitFor();
     await page.goBack();
-    await page.getByRole("link", { name: /Voice notes/ }).click();
+    await page.getByRole("link", { name: /Job notes/ }).click();
     await page.getByLabel("Notes", { exact: true }).fill("Customer reports uneven cooling upstairs.");
     await page.getByText(/Notes saved on this device/).waitFor();
     await page.waitForTimeout(300);

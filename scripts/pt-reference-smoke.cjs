@@ -14,13 +14,14 @@ const NOTE = "We recorded the refrigerant pressures and line temperatures during
 async function enter(page, c) {
   await page.getByLabel("Refrigerant", { exact: true }).selectOption(c.id);
   await page.getByLabel("Metering device").selectOption("txv");
+  await page.getByText("More fields", { exact: true }).click();
   await page.getByLabel("Suction pressure (psig)").fill(c.suction);
   await page.getByLabel("Suction line temp (F)").fill(c.suctionLine);
   await page.getByLabel("Liquid pressure (psig)").fill(c.liquid);
   await page.getByLabel("Liquid line temp (F)").fill(c.liquidLine);
   await page.getByLabel("Manufacturer target (F subcooling)").fill("10");
   await page.getByLabel("Allowed tolerance (plus or minus F)").fill("2");
-  await page.getByRole("heading", { name: "Result", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "Charge result", exact: true }).waitFor();
   const text = await page.locator("body").innerText();
   assert.ok(text.includes(c.publisher), `${c.id} must show selected chart publisher ${c.publisher}`);
   await page.getByText(/^Superheat 10 F \(/).first().waitFor();
@@ -36,8 +37,7 @@ async function enter(page, c) {
       const page = await context.newPage();
       await page.goto(`${BASE}/tools/charge`, { waitUntil: "networkidle" });
       await enter(page, c);
-      for (const theme of ["light", "dark"]) {
-        if (theme === "dark") await page.getByRole("button", { name: "Switch to dark mode" }).click();
+      for (const theme of ["nocturne"]) {
         for (const width of [320, 390, 1280]) {
           await page.setViewportSize({ width, height: 844 });
           assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${c.id} ${theme} overflow at ${width}px`);
@@ -61,8 +61,8 @@ async function enter(page, c) {
     });
     await page.goto(BASE, { waitUntil: "networkidle" });
     await page.getByLabel("Job label (optional)").fill("PT source browser regression");
-    await page.getByRole("button", { name: "Start job", exact: true }).click();
-    await page.getByRole("heading", { name: "What are we working on?" }).waitFor();
+    await page.getByRole("button", { name: "Start", exact: true }).click();
+    await page.getByRole("heading", { name: "PT source browser regression", exact: true }).waitFor();
     const jobUrl = page.url();
     await page.getByRole("link", { name: /Condenser/ }).click();
     await page.getByRole("link", { name: /Refrigerant charge/ }).click();
@@ -75,7 +75,7 @@ async function enter(page, c) {
     assert.equal(await page.getByLabel("Refrigerant", { exact: true }).inputValue(), "R-454B");
     await page.getByRole("button", { name: "Saved", exact: true }).waitFor();
     await page.goto(jobUrl, { waitUntil: "networkidle" });
-    await page.getByRole("link", { name: /Summary and customer note/ }).click();
+    await page.getByRole("link", { name: /Summary & customer note/ }).click();
     await page.getByRole("heading", { name: "Summary", exact: true }).waitFor();
     await page.getByText("Readings", { exact: true }).click();
     const text = await page.locator("body").innerText();
@@ -86,7 +86,15 @@ async function enter(page, c) {
     await page.getByText("What will be sent", { exact: true }).click();
     for (const width of [320, 390, 1280]) {
       await page.setViewportSize({ width, height: 844 });
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `expanded source preview overflow at ${width}px`);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+      if (overflow) {
+        const offenders = await page.evaluate(() => [document.documentElement, document.body, ...document.querySelectorAll("body *")].map(el => {
+          const box = el.getBoundingClientRect();
+          return { tag: el.tagName, className: typeof el.className === "string" ? el.className : "", left: box.left, right: box.right, width: box.width, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth, text: (el.textContent || "").trim().slice(0, 120) };
+        }).filter(item => item.right > innerWidth + 1 || item.left < -1 || item.scrollWidth > item.clientWidth + 1).slice(0, 30));
+        console.error("OVERFLOW", width, JSON.stringify(offenders));
+      }
+      assert.equal(overflow, false, `expanded source preview overflow at ${width}px`);
     }
     await page.setViewportSize({ width: 390, height: 844 });
     await page.getByRole("button", { name: "Generate estimate note", exact: true }).click();

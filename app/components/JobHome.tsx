@@ -5,10 +5,11 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { jobHref } from "../lib/job/routes";
 import { componentForTile, componentsForSystem, newId, scopeForComponent } from "../lib/job/types";
-import { TILES, tileStatus, tileStatusLabel, type TileDef, type TileStatus } from "../lib/job/registry";
+import { TILES, tileStatus, tileStatusLabel, type TileDef } from "../lib/job/registry";
 import { AtticIcon, CondenserIcon, FurnaceIcon, HomeIcon, PlusIcon } from "./Icons";
 import { useJob } from "./JobProvider";
-import { ActionBar, Callout, Chip, ConfirmDialog, Crumbs, EmptyState, PageHead, TextField } from "./ui";
+import { Callout, ConfirmDialog, Crumbs, EmptyState, PageHead, TextField } from "./ui";
+import SaveIndicator from "./SaveIndicator";
 
 const GLYPH: Record<string, (props: { className?: string }) => React.ReactElement> = {
   condenser: (p) => <CondenserIcon {...p} />,
@@ -16,15 +17,6 @@ const GLYPH: Record<string, (props: { className?: string }) => React.ReactElemen
   attic: (p) => <AtticIcon {...p} />,
   home: (p) => <HomeIcon {...p} />,
 };
-
-function chipFor(status: TileStatus) {
-  if (status === "safety") return <Chip tone="safety">Safety</Chip>;
-  if (status === "attention") return <Chip tone="concern">Attention</Chip>;
-  if (status === "needs-review") return <Chip tone="concern">Needs review</Chip>;
-  if (status === "done") return <Chip tone="ok">Done</Chip>;
-  if (status === "in-progress") return <Chip tone="accent">In progress</Chip>;
-  return null;
-}
 
 export default function JobHome() {
   const { job, activeSystem: selectedSystem, setActiveSystemId, dispatch } = useJob();
@@ -59,7 +51,8 @@ export default function JobHome() {
   return (
     <main className="page">
       <Crumbs items={[{ href: "/", label: "Jobs" }, { label: job.label || "Untitled job" }]} />
-      <PageHead title="What are we working on?" lede={job.systems.length > 1 ? "Pick a system, then the part you are checking." : "Pick the part of the system you are checking."}>
+      <PageHead title={job.label || "Untitled job"} lede={`${activeSystem.name} · ${job.systems.length > 1 ? "Choose a system and equipment" : "Choose equipment"}`}>
+        <SaveIndicator />
         {editingLabel ? (
           <form
             className="form"
@@ -115,16 +108,13 @@ export default function JobHome() {
           return (
             <Link key={tile.id} className={`tile ${tile.scope === "home" ? "" : ""}`} data-status={status} href={jobHref(job.id, tile.id, undefined, tile.scope === "home" ? { kind: "home" } : scopeForComponent(activeSystem, component!))} aria-label={`${tile.label}: ${tileStatusLabel(status, tile, job, activeSystem)}`}>
               <Glyph className="tileGlyph" />
-              <span>
+              <span className="tileBody">
                 <span className="tileTitle">{tile.label}</span>
-                <span className="tileMeta" style={{ display: "block" }}>
+                <span className="tileMeta">
                   {tile.description}
                 </span>
-                <span style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8, flexWrap: "wrap" }}>
-                  {chipFor(status)}
-                  <span className="hint">{tileStatusLabel(status, tile, job, activeSystem)}</span>
-                </span>
               </span>
+              <span className="tileStatus">{tileStatusLabel(status, tile, job, activeSystem)}</span>
             </Link>
           );
         })}
@@ -191,11 +181,10 @@ export default function JobHome() {
         />
       )}
 
-      <ActionBar note={findingCount || staleCount ? `${findingCount} current ${findingCount === 1 ? "finding" : "findings"}${staleCount ? `, ${staleCount} need review` : ""}${safetyCount ? `, ${safetyCount} safety` : ""}` : "Findings you save will collect here"}>
-        <Link className="btn primary" href={`/job/${job.id}/summary`}>
-          Summary and customer note
-        </Link>
-      </ActionBar>
+      <div className="summaryLedger noPrint">
+        <p>{findingCount || staleCount ? `${findingCount} current ${findingCount === 1 ? "finding" : "findings"}${staleCount ? ` · ${staleCount} need review` : ""}${safetyCount ? ` · ${safetyCount} safety` : ""}` : "Findings you save will collect here"}</p>
+        <Link className="btn primary" href={`/job/${job.id}/summary`}>Summary &amp; customer note</Link>
+      </div>
     </main>
   );
 }

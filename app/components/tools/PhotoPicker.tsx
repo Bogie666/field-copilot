@@ -6,7 +6,7 @@ import { useJob } from "../JobProvider";
 import PhotoThumb from "./PhotoThumb";
 
 /** Lets the tech attach existing system photos to a finding, or take a new one. */
-export default function PhotoPicker({ systemId, scope: selectedScope, selected, onChange, required }: { systemId?: string; scope?: FindingScope; selected: string[]; onChange: (ids: string[]) => void; required?: boolean }) {
+export default function PhotoPicker({ systemId, scope: selectedScope, selected, onChange, required, inputId }: { systemId?: string; scope?: FindingScope; selected: string[]; onChange: (ids: string[]) => void; required?: boolean; inputId?: string }) {
   const { job, addPhoto } = useJob();
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,7 @@ export default function PhotoPicker({ systemId, scope: selectedScope, selected, 
   }
 
   return (
-    <fieldset className="fieldset">
+    <fieldset className="fieldset" data-photo-picker>
       <legend>{required ? "Photos (at least one required)" : "Photos"}</legend>
       {photos.length > 0 && (
         <div className="photoGrid">
@@ -41,7 +41,7 @@ export default function PhotoPicker({ systemId, scope: selectedScope, selected, 
         </div>
       )}
       <p className="hint">{photos.length ? "Tap a photo to attach it to this finding." : "No photos for this component yet."}</p>
-      <input ref={input} className="visuallyHidden" type="file" accept="image/*" capture="environment" aria-label="Take or choose a photo" onChange={(e) => void onFile(e.target.files?.[0])} />
+      <input id={inputId} ref={input} className="visuallyHidden" type="file" accept="image/*" capture="environment" aria-label="Take or choose a photo" onChange={(e) => void onFile(e.target.files?.[0])} />
       <button className="btn" type="button" disabled={busy} onClick={() => input.current?.click()}>
         {busy ? "Saving photo" : "Take photo"}
       </button>
