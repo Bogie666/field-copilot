@@ -443,3 +443,36 @@ describe("formatNameplateSummary", () => {
     expect(summary).toBe("Manufacturer: Trane\nModel: 4TWR6036N1000A\nSerial: 23145AB7F");
   });
 });
+
+describe("OCR damage seen on a real Trane XV plate", () => {
+  it("reads damaged model and serial labels", () => {
+    const f = parseNameplateText("[Mop. no. ATTV7X48A1000AA voLTS 208 —230\nSERALNO. 23351TCCJF ~~ Pi~ 1 1 60").fields;
+    expect(f.model).toBe("ATTV7X48A1000AA");
+    expect(f.serial).toBe("23351TCCJF");
+    expect(f.phase).toBe("1 phase");
+    expect(parseNameplateText("MoD. No. N90.ATTV7X48A1000AA").fields.model).toBe("ATTV7X48A1000AA");
+  });
+
+  it("reads frequency next to a phase line and MCA split across sparse lines", () => {
+    expect(parseNameplateText("PH~ 1\nH 60").fields.frequency).toBe("60 Hz");
+    expect(parseNameplateText("H 60\nMODEL X").fields.frequency).toBe("");
+    expect(parseNameplateText("42.0\nAMPS\nMINIMUM CIRCUIT AMPACITY").fields.mca).toBe("42.0 A");
+    expect(parseNameplateText("MINIMUM CIRCUIT AMPAGITY\n42.0").fields.mca).toBe("42.0 A");
+    expect(parseNameplateText("12.5 LRA\nMINIMUM CIRCUIT AMPACITY").fields.mca).toBe("");
+  });
+
+  it("skips logo debris before a date but never takes a stray digit as the date", () => {
+    expect(parseNameplateText("MFR DATE\n<=\nrane X\\/\n8/2023").fields.manufacturedDate).toBe("8/2023");
+    expect(parseNameplateText("MFR DATE\n4\nMOD. NO. X").fields.manufacturedDate).toBe("");
+  });
+
+  it("only accepts matching USA and Canada breaker columns", () => {
+    expect(parseNameplateText("MAX FUSE / BREAKER (HACR) = 45 45").fields.maxFuseBreaker).toBe("45 A");
+    expect(parseNameplateText("MAX FUSE / BREAKER (HACR) ~~ 49 45").fields.maxFuseBreaker).toBe("");
+    expect(parseNameplateText("MAX FUSE/BREAKER 30 A").fields.maxFuseBreaker).toBe("30 A");
+  });
+
+  it("does not read the start of a voltage range as RLA", () => {
+    expect(parseNameplateText("COMPR. RLA 208-230 V").fields.rla).toBe("");
+  });
+});

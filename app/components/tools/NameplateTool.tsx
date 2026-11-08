@@ -83,8 +83,8 @@ export default function NameplateTool({ ctx }: { ctx: ToolContext }) {
       setScanStatus(
         result.text.trim()
           ? reconciled.conflicts.length
-            ? `Scan complete. Conflicting ${reconciled.conflicts.map((key) => LABELS[key as Key] || key).join(", ")} readings were left blank. Check every field against the photo.`
-            : "Scan complete. Check every field against the photo before saving."
+            ? `Scan complete. Conflicting ${reconciled.conflicts.map((key) => LABELS[key as Key] || key).join(", ")} readings were left blank. Check every field against the photo.${reconciled.checks.length ? ` ${reconciled.checks.join(" ")}` : ""}`
+            : `Scan complete. Check every field against the photo before saving.${reconciled.checks.length ? ` ${reconciled.checks.join(" ")}` : ""}`
           : "No readable text. Retake the photo or enter the plate manually.",
       );
     } catch (e) {

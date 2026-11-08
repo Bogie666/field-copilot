@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
-import { readDeviceNameplate, type OcrWorker, fillNameplateBlanks, fillNameplateBlanksFromOcr } from "./nameplateScan";
+import { readFileSync } from "node:fs";
+import { confusableDifferences, correctModelLeadingDigit, readDeviceNameplate, type OcrWorker, fillNameplateBlanks, fillNameplateBlanksFromOcr } from "./nameplateScan";
 
 it("fills only untouched blank fields from text, keeping cleared edits and confirmed values", () => {
   const fields = { model: "CONFIRMED", serial: "", refrigerant: "", equipmentAge: "", manufacturedDate: "" };
@@ -133,7 +134,8 @@ it("recovers complementary fields from the latest Trane scan without treating mi
 
   expect(result.fields).toMatchObject({
     manufacturer: "Trane",
-    model: "ATTV7X48A1000AA",
+    // OCR reads the leading 4 as "A" in both passes; the Trane model shape corrects it with a check note.
+    model: "4TTV7X48A1000AA",
     serial: "23351TCCJF",
     manufacturedDate: "8/2023",
     refrigerant: "R-410A",
@@ -146,9 +148,10 @@ it("recovers complementary fields from the latest Trane scan without treating mi
     lra: "12.0 A",
   });
   expect(result.conflicts).toEqual([]);
+  expect(result.checks.join(" ")).toMatch(/first character was read as "A" and changed to "4"/);
 });
 
-it("recovers complementary fields from the real Trane scan while rejecting conflicting model readings", () => {
+it("recovers the real Trane scan, keeping the primary model read when passes differ only by look-alike glyphs", () => {
   const fields = {
     manufacturer: "", model: "", serial: "", equipmentType: "", manufacturedDate: "",
     refrigerant: "", voltage: "", phase: "", frequency: "", mca: "", maxFuseBreaker: "",
@@ -184,7 +187,7 @@ it("recovers complementary fields from the real Trane scan while rejecting confl
 
   expect(result.fields).toMatchObject({
     manufacturer: "Trane",
-    model: "",
+    model: "4TTV7X48A1000AA",
     serial: "23351TCCJF",
     manufacturedDate: "8/2023",
     refrigerant: "R-410A",
@@ -196,7 +199,35 @@ it("recovers complementary fields from the real Trane scan while rejecting confl
     rla: "20.3 A",
     lra: "",
   });
-  expect(result.conflicts).toEqual(["model", "lra"]);
+  // ATTV7X48 vs aTTVIX4B: 7/I and 8/B only. Primary read kept, characters named for checking.
+  expect(result.fields.model).toBe("4TTV7X48A1000AA");
+  expect(result.conflicts).toEqual(["lra"]);
+  expect(result.checks.join(" ")).toMatch(/look-alike characters 7 \(character 5\), 8 \(character 8\)/);
+});
+
+it("does not apply the Trane leading-digit correction to other brands or other shapes", () => {
+  expect(correctModelLeadingDigit("Carrier", "ATTV7X48A1000AA")).toEqual({ value: "ATTV7X48A1000AA" });
+  expect(correctModelLeadingDigit("Trane", "TAM7A0C36H31SA")).toEqual({ value: "TAM7A0C36H31SA" });
+  expect(correctModelLeadingDigit("American Standard", "AA7A4036").value).toBe("4A7A4036");
+  expect(correctModelLeadingDigit("Trane", "ZTTB3036A1000A").value).toBe("2TTB3036A1000A");
+});
+
+it("keeps model reads that differ by non-look-alike characters as conflicts", () => {
+  expect(confusableDifferences("ABCD1234A", "ABCD1234B")).toBeNull();
+  expect(confusableDifferences("4TTV7X48", "4TTV7X49")).toBeNull();
+  expect(confusableDifferences("4TTV7X48A1", "ATTVIXABA1")).toBeNull();
+  expect(confusableDifferences("4TTV7X48A1", "ATTV7X48A1")).toEqual([0]);
+});
+
+it("reads the real Trane XV plate captured by the current device pipeline", () => {
+  const fields = Object.fromEntries(["manufacturer", "model", "serial", "equipmentType", "manufacturedDate", "refrigerant", "voltage", "phase", "frequency", "mca", "maxFuseBreaker", "rla", "lra", "capacity"].map((key) => [key, ""]));
+  const passes = ["gray-psm6", "threshold-psm11"].map((name) => readFileSync(`app/lib/fixtures/nameplates/trane-xv.${name}.txt`, "utf8"));
+  const result = fillNameplateBlanksFromOcr(fields, passes, new Set());
+  expect(result.fields).toMatchObject({
+    manufacturer: "Trane", model: "4TTV7X48A1000AA", serial: "23351TCCJF", refrigerant: "R-410A", voltage: "208-230 V",
+    phase: "1 phase", frequency: "60 Hz", mca: "42.0 A", rla: "20.3 A", lra: "12.0 A",
+  });
+  expect(result.conflicts).toEqual([]);
 });
 
 

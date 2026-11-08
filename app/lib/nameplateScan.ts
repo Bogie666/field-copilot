@@ -11,27 +11,55 @@ export function fillNameplateBlanks<T extends Record<string, string>>(current: T
   return next;
 }
 
-export type OcrReconciliation<T> = { fields: T; conflicts: string[] };
+export type OcrReconciliation<T> = { fields: T; conflicts: string[]; checks: string[] };
 
-function isMinorSupplementalModelDamage(primary: string, supplemental: string): boolean {
-  const expected = primary.toUpperCase();
-  const noisy = supplemental.toUpperCase();
-  if (expected.length < 8 || noisy.length !== expected.length) return false;
-  const differences = Array.from(expected).filter((character, index) => character !== noisy[index]);
-  if (differences.length !== 1) return false;
-  const index = Array.from(expected).findIndex((character, position) => character !== noisy[position]);
-  return expected[index] === "0" && /[DOQ]/.test(noisy[index]);
+/** Glyphs Tesseract confuses on stamped and printed plates. Only same-group swaps count as damage. */
+const CONFUSABLE_GROUPS = ["0ODQ", "1IL7T", "4A", "8B", "5S", "2Z", "6G"];
+const sameGroup = (a: string, b: string) => CONFUSABLE_GROUPS.some((group) => group.includes(a) && group.includes(b));
+
+/** Positions where two same-length identifier reads differ only by look-alike glyphs, or null. */
+export function confusableDifferences(primary: string, supplemental: string): number[] | null {
+  const a = primary.toUpperCase();
+  const b = supplemental.toUpperCase();
+  if (a.length < 8 || a.length !== b.length) return null;
+  const positions: number[] = [];
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] === b[index]) continue;
+    if (!sameGroup(a[index], b[index])) return null;
+    positions.push(index);
+  }
+  // Long identifiers tolerate one more damaged glyph; anything beyond that is a conflict.
+  return positions.length <= (a.length >= 12 ? 4 : 3) ? positions : null;
 }
 
-function reconcileOcrValues(key: string, values: string[]): string | null {
-  if (values.length === 1) return values[0];
+function reconcileOcrValues(key: string, values: string[]): { value: string; check?: string } | null {
+  if (values.length === 1) return { value: values[0] };
   if (values.length !== 2) return null;
 
-  // PSM 6 is the primary block-reading pass. A narrow 0-to-D/O/Q confusion in
-  // the sparse pass is minor damage. Other one-character changes still conflict.
-  if (key === "model" && isMinorSupplementalModelDamage(values[0], values[1])) return values[0];
-
+  // PSM 6 is the primary block-reading pass. When the sparse pass differs only by
+  // look-alike glyphs (7/I, 8/B, 0/D), keep the primary read and name the characters
+  // to check. Any other difference, including insertions, stays a conflict.
+  if (key === "model" || key === "serial") {
+    const positions = confusableDifferences(values[0], values[1]);
+    if (positions) {
+      const chars = positions.map((index) => `${values[0][index]} (character ${index + 1})`).join(", ");
+      return { value: values[0], check: `${key === "model" ? "Model" : "Serial"}: two scans disagreed on look-alike characters ${chars}. Check them on the plate.` };
+    }
+  }
   return null;
+}
+
+/**
+ * Trane and American Standard residential model numbers start with a digit (4TTV, 2TTB, 4A7A).
+ * Tesseract often reads that leading 4 as "A" and 2 as "Z". Correct only that first character,
+ * only for these brands and series shapes, and always ask for a visual check.
+ */
+export function correctModelLeadingDigit(manufacturer: string, model: string): { value: string; check?: string } {
+  if (!/^(?:TRANE|AMERICAN STANDARD)$/i.test(manufacturer.trim())) return { value: model };
+  const match = /^([AZ])(T[A-Z]{2}\d|A\d[A-Z])/i.exec(model);
+  if (!match) return { value: model };
+  const digit = match[1].toUpperCase() === "A" ? "4" : "2";
+  return { value: `${digit}${model.slice(1)}`, check: `Model: the first character was read as "${match[1].toUpperCase()}" and changed to "${digit}", because ${manufacturer.trim()} model numbers start with a digit. Check it on the plate.` };
 }
 
 /** Reconcile independent OCR passes. Agreement fills blanks; disagreement stays blank for technician review. */
@@ -45,6 +73,7 @@ export function fillNameplateBlanksFromOcr<T extends Record<string, string>>(
   const ambiguousFields = new Set<string>(extractions.flatMap((result) => result.conflicts ?? []));
   const next = { ...current };
   const conflicts: string[] = [];
+  const checks: string[] = [];
   for (const key of Object.keys(current)) {
     if (current[key].trim() || edited.has(key)) continue;
     if (ambiguousFields.has(key)) {
@@ -58,10 +87,20 @@ export function fillNameplateBlanksFromOcr<T extends Record<string, string>>(
         .map((value) => [value.toUpperCase(), value]),
     ).values());
     const reconciled = reconcileOcrValues(key, values);
-    if (reconciled) next[key as keyof T] = reconciled as T[keyof T];
-    else if (values.length > 1) conflicts.push(key);
+    if (reconciled) {
+      next[key as keyof T] = reconciled.value as T[keyof T];
+      if (reconciled.check) checks.push(reconciled.check);
+    } else if (values.length > 1) conflicts.push(key);
   }
-  return { fields: next, conflicts };
+  const manufacturer = typeof next.manufacturer === "string" ? next.manufacturer : "";
+  if ("model" in next && next.model && next.model !== current.model) {
+    const corrected = correctModelLeadingDigit(manufacturer, next.model);
+    if (corrected.check) {
+      next["model" as keyof T] = corrected.value as T[keyof T];
+      checks.push(corrected.check);
+    }
+  }
+  return { fields: next, conflicts, checks };
 }
 
 export type OcrWorker = {

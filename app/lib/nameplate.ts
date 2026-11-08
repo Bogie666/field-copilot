@@ -154,16 +154,19 @@ function manufacturedDateCandidates(lines: string[]): PrintedCandidate[] {
       // Only a genuinely empty label may borrow a standalone value below it.
       // Do not cross any other labeled field to find a nearby date.
       if (tail.replace(/[^A-Z0-9]/gi, "")) continue;
-      for (let next = index + 1; next <= Math.min(index + 2, lines.length - 1); next += 1) {
+      for (let next = index + 1; next <= Math.min(index + 3, lines.length - 1); next += 1) {
         if (DATE_FIELD_BOUNDARY.test(lines[next])) break;
         const below = printedDateCandidate(lines[next]);
-        if (below) {
+        // A lone digit or two below the label is OCR debris, not a printed date.
+        if (below && /\d{4}|\d[/.-]\s*\d/.test(below)) {
           candidates.push({ value: below, line: lines.slice(index, next + 1).join(" ") });
           break;
         }
         // Tolerate a short isolated OCR fragment (the real plate produces "Pr"),
         // not an intervening instruction or a different unlabeled field.
-        if (!/^[^A-Z0-9]*[A-Z]{1,3}[^A-Z0-9]*$/i.test(lines[next])) break;
+        // Also skip symbol-only debris and short digit-free logo text beside the label ("rane X\/").
+        const debris = /^[^A-Z0-9]*(?:[A-Z]{1,3}|\d{1,2})[^A-Z0-9]*$/i.test(lines[next]) || !/[A-Z0-9]/i.test(lines[next]) || (lines[next].length <= 12 && !/\d/.test(lines[next]));
+        if (!debris) break;
       }
     }
   }
@@ -208,16 +211,19 @@ function cleanCandidate(value: string): string {
     .toUpperCase();
 }
 
-const MODEL_LABEL = /(?:\bM[O0]DEL\b|\bMOD(?:EL)?\b|\bMDL\b|\bM\s*[/.]\s*N\b)/i;
+// OCR on stamped plates reads "MOD. NO." as "Mop. no." or "moo. no."; those variants only count with the "NO." that follows.
+const MODEL_LABEL = /(?:\bM[O0]DEL\b|\bMOD(?:EL)?\b|\bMDL\b|\bM\s*[/.]\s*N\b|\bM[O0][PO0]\.\s*N[O0]\.)/i;
 // Tesseract commonly turns "SER NO." into "sen wo." or "sean 0." on small stamped plates.
 // Keep fuzzy substitutions confined to the complete label, never the identifier candidate.
-const SERIAL_LABEL = /(?:\bSER[I1L]AL(?=\s|[:#=.-]|N[O0]\b|NUMBER\b)(?:\s*(?:N[O0]\.?|NUMBER))?|\bSER\b|\bS\s*[/.]\s*N\b|\bSE(?:N|AN)\b\s+(?:[NW][O0]|[O0])\.?)/i;
+const SERIAL_LABEL = /(?:\bSER[I1L]?AL(?=\s|[:#=.-]|N[O0]\b|NUMBER\b)(?:\s*(?:N[O0]\.?|NUMBER))?|\bSER\b|\bS\s*[/.]\s*N\b|\bSE(?:N|AN)\b\s+(?:[NW][O0]|[O0])\.?)/i;
 const IDENTIFIER_STOP_TOKEN = /^(?:MODEL|M0DEL|MOD|MDL|SERIAL|SERLAL|SER1AL|SER|REFRIGERANT|REFRIG|VOLTAGE|VOLTS?|V|VAC|PHASE|PH|HZ|HERTZ|MCA|MOCP|RLA|LRA|CAPACITY|BTU|BTUH|DATE|MFG|MFD|MAX|MAXIMUM|FUSE|BREAKER|BKR|AMPS?|CKT|CIRCUIT)$/i;
 const RATING_VALUE_TOKEN = /^(?:(?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600)(?:[/-](?:110|115|120|200|208|220|230|240|265|277|380|400|415|440|460|480|575|600))?(?:V(?:AC)?|VOLTS?)?|[13](?:PH|PHASE)|(?:50|60)(?:HZ|HERTZ)|\d+\.\d+(?:A|AMPS?)?|\d+(?:\.\d+)?(?:AMPS?|BTUH?|MBH|TONS?))$/i;
 
 function identifierCandidate(text: string): string {
   const cleaned = text
-    .replace(/^\s*[:#=.-]*\s*(?:(?:N[O0]\.?|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
+    .replace(/^\s*[:#=.-]*\s*(?:(?:N[O0]\.?|[NH][O09]{1,2}\.|NUMBER|NUM(?:BER)?)\s*)?[:#=.-]?\s*/i, "")
+    // OCR can duplicate a damaged "NO." ("No. N90.ATTV..."); drop one more dotted fragment.
+    .replace(/^[NH][O09]{1,2}\.\s*(?=[A-Z0-9])/i, "")
     .trim();
   if (!cleaned) return "";
   if (/[|]/.test(cleaned)) return "";
@@ -380,6 +386,24 @@ function fallbackModel(lines: string[]): { value: string; line: string; confiden
   return candidates[0] ? { ...candidates[0], confidence: 0.5 } : null;
 }
 
+/**
+ * Sparse OCR can emit "42.0" / "AMPS" / "MINIMUM CIRCUIT AMPACITY" as separate lines.
+ * Accept a decimal amp value up to two lines above the label only when every line in
+ * between is a bare unit, so an unrelated number is never borrowed.
+ */
+function standaloneAmpsBefore(lines: string[], label: RegExp): { value: string; line: string } | null {
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!label.test(lines[index])) continue;
+    for (let back = index - 1; back >= Math.max(0, index - 2); back -= 1) {
+      const line = lines[back];
+      const value = /^\s*(\d{1,3}\.\d)\s*(?:A|AMPS?)?\s*$/i.exec(line);
+      if (value) return { value: value[1], line: lines.slice(back, index + 1).join(" ") };
+      if (!/^[^A-Z0-9]*(?:A|AMPS?)[^A-Z0-9]*$/i.test(line)) break;
+    }
+  }
+  return null;
+}
+
 function setResult(
   extraction: NameplateExtraction,
   key: NameplateFieldKey,
@@ -438,31 +462,33 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
   );
   if (voltage) setResult(extraction, "voltage", voltage.value, 0.92, voltage.line);
 
-  const phase = firstPattern(lines, /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*([13])\b|\b([13])\s*(?:PHASE|PH|Ø)\b/i, (match) => `${match[1] || match[2]} phase`);
+  const phase = firstPattern(lines, /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*([13])\b|\b([13])\s*(?:PHASE|PH|Ø)\b/i, (match) => `${match[1] || match[2]} phase`)
+    || firstPattern(lines, /\bP[IL1|]\s*[~-]\s*([13])\b/i, (match) => `${match[1]} phase`);
   if (phase) setResult(extraction, "phase", phase.value, 0.9, phase.line);
 
+  const phaseLine = /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*[13]\b|\b[13]\s*(?:PHASE|PH|Ø)\b|\bP[IL1|]\s*[~-]\s*[13]\b/i;
+  const nearPhase = lines.filter((line, index) => phaseLine.test(line) || phaseLine.test(lines[index - 1] ?? ""));
   const frequency = firstPattern(lines, /\b(?:HZ|HERTZ)\s*[:#=.\-~]*\s*(50|60)\b|\b(50|60)\s*(?:HZ|HERTZ)\b/i, (match) => `${match[1] || match[2]} Hz`)
-    || firstPattern(
-      lines.filter((line) => /\b(?:PHASE|PH|Ø)\s*[:#=.\-~]*\s*[13]\b|\b[13]\s*(?:PHASE|PH|Ø)\b/i.test(line)),
-      /\b(?:H[UZ]|W[I1L])\s*[:#=.\-~]*\s*(50|60)\b/i,
-      (match) => `${match[1]} Hz`,
-    );
+    || firstPattern(nearPhase, /\b(?:H[UZ2]?|W[I1L]|[IL1]Z)\s*[:#=.\-~]*\s*(50|60)\b/i, (match) => `${match[1]} Hz`);
   if (frequency) setResult(extraction, "frequency", frequency.value, 0.86, frequency.line);
 
+  const MCA_LABEL = /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:A[CG]ITY|S)?)\b/i;
   const mca = firstPattern(
     lines,
-    /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\s*[:#=.\-~]*\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i,
+    new RegExp(`${MCA_LABEL.source}\\s*[:#=.\\-~]*\\s*(\\d+(?:\\.\\d+)?)\\s*(?:A|AMPS?)?\\b`, "i"),
     (match) => match[1],
   ) || patternNearLabel(
     lines,
-    /\b(?:MCA|MIN(?:IMUM)?\s+CIRCUIT\s+AMP(?:ACITY|S)?)\b/i,
+    MCA_LABEL,
     /^\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*$/i,
     1,
-  );
+  ) || standaloneAmpsBefore(lines, MCA_LABEL);
   if (mca) setResult(extraction, "mca", `${mca.value} A`, 0.94, mca.line);
 
-  const maxFuse = firstPattern(lines, /\b(?:MOCP|MAX(?:IMUM)?\s+(?:FUSE(?:\s*\/\s*BREAKER)?|BREAKER|OVERCURRENT(?:\s+PROTECTION)?)|MAX\s+CKT\s+BKR)(?:\s*\([A-Z0-9]+\))?\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i, (match) => `${match[1]} A`);
-  if (maxFuse) setResult(extraction, "maxFuseBreaker", maxFuse.value, 0.94, maxFuse.line);
+  // Plates often print USA and Canada columns ("45 45"). If OCR reads the two differently,
+  // one of them is wrong, so leave the field for the technician.
+  const maxFuse = firstPattern(lines, /\b(?:MOCP|MAX(?:IMUM)?\s+(?:FUSE(?:\s*\/\s*BREAKER)?|BREAKER|OVERCURRENT(?:\s+PROTECTION)?)|MAX\s+CKT\s+BKR)(?:\s*\([A-Z0-9]+\)?)?\s*[:#=.~-]*\s*(\d+(?:\.\d+)?)(?:\s*(?:A|AMPS?)\b)?(?:\s+(\d+(?:\.\d+)?)\b)?/i, (match) => (match[2] && match[2] !== match[1] ? "" : `${match[1]} A`));
+  if (maxFuse?.value) setResult(extraction, "maxFuseBreaker", maxFuse.value, 0.94, maxFuse.line);
 
   const rla = lines.reduce<{ value: string; line: string } | null>((found, line, index) => {
     if (found) return found;
@@ -472,7 +498,7 @@ export function parseNameplateText(rawText: string): NameplateExtraction {
     const beforeText = line.slice(0, label.index);
     const afterText = line.slice(label.index + label[0].length);
     const before = /(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\s*$/i.exec(beforeText);
-    const after = /^\s*[:#=.-]?\s*(\d+(?:\.\d+)?)\s*(?:A|AMPS?)?\b/i.exec(afterText);
+    const after = /^\s*[:#=.-]?\s*(\d+(?:\.\d+)?)(?!\s*[-/]\s*\d{3})\s*(?:A|AMPS?)?\b/i.exec(afterText);
     const beforePrefix = before ? beforeText.slice(0, before.index) : "";
     const beforeIsCompressorNumber = Boolean(before && /^\d$/.test(before[1]) && /\b(?:COMPRESSOR|COMPR?|COMP)\s*$/i.test(beforePrefix));
     const value = before && !beforeIsCompressorNumber ? before[1] : after?.[1] || before?.[1];
