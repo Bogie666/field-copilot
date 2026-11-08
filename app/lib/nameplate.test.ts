@@ -170,19 +170,19 @@ describe("parseNameplateText", () => {
   it("does not copy a serial-only value into the model field", () => {
     const sameLine = parseNameplateText("SERIAL NO. 23145AB7F\n208/230 VAC");
     const splitLine = parseNameplateText("SERIAL NO.\n23145AB7F");
-    const damagedSplitLine = parseNameplateText("sen wo.\n23351TCCJF");
+    const damagedSplitLine = parseNameplateText("sen wo.\n20481TKRWM");
 
     expect(sameLine.fields.serial).toBe("23145AB7F");
     expect(sameLine.fields.model).toBe("");
     expect(sameLine.warnings[0]).toContain("No model number");
     expect(splitLine.fields).toMatchObject({ model: "", serial: "23145AB7F" });
-    expect(damagedSplitLine.fields).toMatchObject({ model: "", serial: "23351TCCJF" });
+    expect(damagedSplitLine.fields).toMatchObject({ model: "", serial: "20481TKRWM" });
   });
 
   it("keeps a damaged serial label from becoming a fallback model", () => {
-    const result = parseNameplateText("sen wo. 23351TCCJF");
+    const result = parseNameplateText("sen wo. 20481TKRWM");
 
-    expect(result.fields.serial).toBe("23351TCCJF");
+    expect(result.fields.serial).toBe("20481TKRWM");
     expect(result.fields.model).toBe("");
   });
 
@@ -326,7 +326,7 @@ describe("parseNameplateText", () => {
       ££" TRANE X\\/ MFR DATE
       — 8/2023
       woo wo. ATTV7X48A1000AA vous 208-230
-      sen wo. 23351TCCJF PH~ 1 Wi 60
+      sen wo. 20481TKRWM PH~ 1 Wi 60
       MINIMUM CIRCUIT AMPACITY 42.0 AMPS
       MAX FUSE / BREAKER (HACR) 45 45
       HFC —~ 410A 11s 09 02. OR 5.24 kg(SI)
@@ -336,7 +336,7 @@ describe("parseNameplateText", () => {
     expect(result.fields).toMatchObject({
       manufacturer: "Trane",
       model: "ATTV7X48A1000AA",
-      serial: "23351TCCJF",
+      serial: "20481TKRWM",
       manufacturedDate: "8/2023",
       refrigerant: "R-410A",
       voltage: "208-230 V",
@@ -446,9 +446,9 @@ describe("formatNameplateSummary", () => {
 
 describe("OCR damage seen on a real Trane XV plate", () => {
   it("reads damaged model and serial labels", () => {
-    const f = parseNameplateText("[Mop. no. ATTV7X48A1000AA voLTS 208 —230\nSERALNO. 23351TCCJF ~~ Pi~ 1 1 60").fields;
+    const f = parseNameplateText("[Mop. no. ATTV7X48A1000AA voLTS 208 —230\nSERALNO. 20481TKRWM ~~ Pi~ 1 1 60").fields;
     expect(f.model).toBe("ATTV7X48A1000AA");
-    expect(f.serial).toBe("23351TCCJF");
+    expect(f.serial).toBe("20481TKRWM");
     expect(f.phase).toBe("1 phase");
     expect(parseNameplateText("MoD. No. N90.ATTV7X48A1000AA").fields.model).toBe("ATTV7X48A1000AA");
   });

@@ -101,7 +101,7 @@ it("recovers complementary fields from the latest Trane scan without treating mi
     \\& rane XJ MFRDATE | BA
     NAV spe
     _MoD. No. ATTV7X48A1000AA vos 208 —230
-    SERIALNO. 23351TCCJF ~~ PH~ 1 1 60 ;
+    SERIALNO. 20481TKRWM ~~ PH~ 1 1 60 ;
     | MINIMUM CIRCUIT AMPACITY ~~ 42.0 AMPS |
     OVERCURRENT PROTECTIVE DEVICE ~~ USA CANADA.
     MAX FUSE / BREAKER (HACR) 45 45
@@ -116,7 +116,7 @@ it("recovers complementary fields from the latest Trane scan without treating mi
     8/2023
     MOD. No. ATTV7X48A1 D00AA
     yours 208 —-230
-    SERIAL NO. 23351TCCJF
+    SERIAL NO. 20481TKRWM
     PH~ 1
     HZ 60
     MINIMUM CIRCUIT AMPACITY
@@ -136,7 +136,7 @@ it("recovers complementary fields from the latest Trane scan without treating mi
     manufacturer: "Trane",
     // OCR reads the leading 4 as "A" in both passes; the Trane model shape corrects it with a check note.
     model: "4TTV7X48A1000AA",
-    serial: "23351TCCJF",
+    serial: "20481TKRWM",
     manufacturedDate: "8/2023",
     refrigerant: "R-410A",
     voltage: "208-230 V",
@@ -161,7 +161,7 @@ it("recovers the real Trane scan, keeping the primary model read when passes dif
     ££" TRANE X\\/ MFR DATE
     — 8/2023
     woo wo. ATTV7X48A1000AA vous 208-230
-    sen wo. 23351TCCJF PH~ 1 Wi 60
+    sen wo. 20481TKRWM PH~ 1 Wi 60
     MINIMUM CIRCUIT AMPACITY 42.0 AMPS
     MAX FUSE / BREAKER (HACR) 45 45
     HFC —~ 410A 11s 09 02. OR 5.24 kg(SI)
@@ -174,7 +174,7 @@ it("recovers the real Trane scan, keeping the primary model read when passes dif
     aTTVIX4BA1000AA vors 208 —230
     PH- 1
     Hu 60
-    sean 0. 23351TCCJF
+    sean 0. 20481TKRWM
     42.0
     "AMPS
     MINIMUM CIRCUIT AMPACITY
@@ -188,7 +188,7 @@ it("recovers the real Trane scan, keeping the primary model read when passes dif
   expect(result.fields).toMatchObject({
     manufacturer: "Trane",
     model: "4TTV7X48A1000AA",
-    serial: "23351TCCJF",
+    serial: "20481TKRWM",
     manufacturedDate: "8/2023",
     refrigerant: "R-410A",
     voltage: "208-230 V",
@@ -224,7 +224,7 @@ it("reads the real Trane XV plate captured by the current device pipeline", () =
   const passes = ["gray-psm6", "threshold-psm11"].map((name) => readFileSync(`app/lib/fixtures/nameplates/trane-xv.${name}.txt`, "utf8"));
   const result = fillNameplateBlanksFromOcr(fields, passes, new Set());
   expect(result.fields).toMatchObject({
-    manufacturer: "Trane", model: "4TTV7X48A1000AA", serial: "23351TCCJF", refrigerant: "R-410A", voltage: "208-230 V",
+    manufacturer: "Trane", model: "4TTV7X48A1000AA", serial: "20481TKRWM", refrigerant: "R-410A", voltage: "208-230 V",
     phase: "1 phase", frequency: "60 Hz", mca: "42.0 A", rla: "20.3 A", lra: "12.0 A",
   });
   expect(result.conflicts).toEqual([]);
