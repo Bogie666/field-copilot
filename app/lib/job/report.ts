@@ -10,11 +10,12 @@ export function findingId(finding: Finding): string {
 }
 
 /** The private export is explicit about omissions. No external service is involved. */
-export function officeEvidenceRecord(job: Job) {
+export function officeEvidenceRecord(job: Job, preparedBy = "") {
   return {
     format: "field-copilot-office-evidence",
     version: 1,
     recordedThrough: job.updatedAt,
+    ...(preparedBy ? { preparedBy } : {}),
     limitations: [REPORT_LIMITS, EXPORT_LIMITS],
     photoContent: "metadata-only",
     job,
@@ -58,10 +59,11 @@ function findingLines(job: Job, finding: Finding, historical = false): string[] 
 }
 
 /** Complete readable evidence, including notes/history/drafts, without claiming to contain images. */
-export function officeEvidenceText(job: Job): string {
+export function officeEvidenceText(job: Job, preparedBy = ""): string {
   const lines = [
     "FIELD COPILOT | PRIVATE OFFICE EVIDENCE",
     `Job: ${job.label || "Untitled"}`,
+    ...(preparedBy ? [`Prepared by: ${preparedBy}`] : []),
     `Job ID: ${job.id}`,
     `Created: ${job.createdAt}`,
     `Last recorded update: ${job.updatedAt}`,
@@ -107,12 +109,12 @@ export function officeEvidenceText(job: Job): string {
 }
 
 /** Verbatim documented facts, never interpretations. Private notes, labels and images stay out. */
-export function customerCloseoutText(job: Job, selected: Finding[] = job.findings): string {
+export function customerCloseoutText(job: Job, selected: Finding[] = job.findings, preparedBy = ""): string {
   // Selection cannot inject historical/deleted evidence. All safety findings stay visible.
   const selectedIds = new Set(selected.map(findingId));
   const current = job.findings.filter(finding => !finding.staleAt && (selectedIds.has(findingId(finding)) || finding.severity === "safety"));
   const stale = job.findings.filter(finding => finding.staleAt);
-  const lines = ["VISIT SUMMARY", "Prepared from the technician’s recorded findings. Review with the technician before customer use.", REPORT_LIMITS];
+  const lines = ["VISIT SUMMARY", ...(preparedBy ? [`Technician: ${preparedBy}`] : []), "Prepared from the technician’s recorded findings. Review with the technician before customer use.", REPORT_LIMITS];
   const sorted = [...current].sort((a, b) => Number(b.severity === "safety") - Number(a.severity === "safety"));
   for (const finding of sorted) {
     lines.push("", `${safeScopeLabel(finding.scope, job.systems)}${finding.severity === "safety" ? " | Documented safety concern" : ""}`);

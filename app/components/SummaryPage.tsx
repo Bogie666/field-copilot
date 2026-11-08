@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { EMPTY_PROFILE, getProfile, preparedByLine, subscribePrefs } from "../lib/devicePrefs";
 import { EXPLANATION_URGENCIES } from "../lib/fieldAi";
 import { copyText } from "../lib/clientTools";
 import { composeExplanationInput, suggestUrgency, type Urgency } from "../lib/job/compose";
@@ -31,6 +32,8 @@ const ORDER = { safety: 0, concern: 1, ok: 2, info: 3 } as const;
 
 export default function SummaryPage() {
   const { job, dispatch, getPhotoBlob } = useJob();
+  // Technician profile from Settings; printed on reports only, never sent to AI.
+  const preparedBy = preparedByLine(useSyncExternalStore(subscribePrefs, getProfile, () => EMPTY_PROFILE));
   const [selected, setSelected] = useState<Set<string>>(() => new Set(job?.findings.filter((f) => f.severity === "safety" || f.severity === "concern").map(findingId) ?? []));
   const [urgencyChoice, setUrgencyChoice] = useState<Urgency | "">("");
   const [typeOverride, setTypeOverride] = useState<{ scope: string; value: string } | null>(null);
@@ -58,7 +61,7 @@ export default function SummaryPage() {
   const suggested = suggestUrgency(chosen);
   const urgency = urgencyChoice || suggested;
   const composed = composeExplanationInput(chosen, { systems: job.systems, equipmentType, equipmentAge: age, urgency });
-  const customerCloseout = customerCloseoutText(job, chosen);
+  const customerCloseout = customerCloseoutText(job, chosen, preparedBy);
   const closeoutReviewed = reviewedCloseout === customerCloseout;
   const issues = chosen.length === 0 ? [] : composed.issues;
   const safetyChosen = chosen.some((f) => f.severity === "safety");
@@ -91,8 +94,8 @@ export default function SummaryPage() {
     if (!job) return;
     try {
       const filename = `field-copilot-${job.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
-      if (kind === "structured") downloadText(JSON.stringify(officeEvidenceRecord(job), null, 2), `${filename}-evidence.json`, "application/json");
-      else downloadText(kind === "office" ? officeEvidenceText(job) : customerCloseout, `${filename}-${kind}.txt`);
+      if (kind === "structured") downloadText(JSON.stringify(officeEvidenceRecord(job, preparedBy), null, 2), `${filename}-evidence.json`, "application/json");
+      else downloadText(kind === "office" ? officeEvidenceText(job, preparedBy) : customerCloseout, `${filename}-${kind}.txt`);
       setCopyMessage("Download prepared. Check your browser’s downloads. Images are not included; this is not a restorable backup.");
     } catch (error) { setCopyMessage(error instanceof Error ? error.message : "Download failed. Copy the report instead."); }
   }
@@ -102,7 +105,7 @@ export default function SummaryPage() {
     setExportingPhotos(true);
     setCopyMessage("Preparing the private report and saved photos…");
     try {
-      const result = await exportOfficeHtml(job, getPhotoBlob);
+      const result = await exportOfficeHtml(job, getPhotoBlob, preparedBy);
       downloadText(result.html, `field-copilot-${job.id.replace(/[^a-zA-Z0-9_-]/g, "_")}-office-with-photos.html`, "text/html");
       setCopyMessage(result.missingPhotoIds.length ? `Report prepared with ${result.missingPhotoIds.length} missing image(s), listed inside the report. Check your browser’s downloads.` : "Office report with saved photos prepared. Check your browser’s downloads. This is not a restorable backup.");
     } catch (error) { setCopyMessage(error instanceof Error ? error.message : "The photo report could not be prepared. Try the text export."); }
@@ -204,7 +207,7 @@ export default function SummaryPage() {
         <p className="hint">Includes equipment, readings and sources, actions, verification, notes, previous findings, accepted note originals, unconfirmed drafts, references and photo metadata. It includes private job labels and equipment identifiers; review the recipient before sharing.</p>
         <p className="hint">{REPORT_LIMITS} {EXPORT_LIMITS}</p>
         <div className="btnRow evidenceActions">
-          <button className="btn" type="button" onClick={() => { copyText(officeEvidenceText(job)).then(() => setCopyMessage("Private office evidence copied. Images are not included."), () => setCopyMessage("Copy failed. Download the report instead.")); }}>Copy office evidence</button>
+          <button className="btn" type="button" onClick={() => { copyText(officeEvidenceText(job, preparedBy)).then(() => setCopyMessage("Private office evidence copied. Images are not included."), () => setCopyMessage("Copy failed. Download the report instead.")); }}>Copy office evidence</button>
           <button className="btn" type="button" onClick={() => downloadReport("office")}>Download office report (.txt)</button>
           <button className="btn" type="button" onClick={() => downloadReport("structured")}>Download structured evidence (.json)</button>
           <button className="btn" type="button" disabled={exportingPhotos} onClick={() => void downloadPhotoReport()}>{exportingPhotos ? "Preparing photos…" : "Download office report with photos (.html)"}</button>
