@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams, useSearchParams } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
+import { useRouteSegment } from "../lib/routeSegments";
 import { notesForScope, photoMatchesScope, scopeKey } from "../lib/job/types";
 import { TOOLS, tileById, tileStatus, tileStatusLabel } from "../lib/job/registry";
 import { jobHref, resolveRouteScope } from "../lib/job/routes";
@@ -10,7 +11,8 @@ import { Callout, Chip, Crumbs, EmptyState, ListLink, PageHead, SeverityChip } f
 import SaveIndicator from "./SaveIndicator";
 
 export default function TilePage() {
-  const { id, tile: tileId } = useParams<{ id: string; tile: string }>();
+  const id = useRouteSegment(1);
+  const tileId = useRouteSegment(2);
   const params = useSearchParams();
   const { job } = useJob();
   const tile = tileById(tileId);

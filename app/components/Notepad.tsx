@@ -1,6 +1,7 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
+import { useRouteSegment } from "../lib/routeSegments";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MicrophoneIcon } from "./Icons";
 import { canLeavePersonalNote, getPersonalNotesStore, hasPersonalNoteContent, newNote, validatePersonalNote, type PersonalNote } from "../lib/notesStore";
@@ -40,9 +41,9 @@ function makeId() {
 }
 
 export default function Notepad() {
-  const params = useParams<{ id?: string }>();
+  const segment = useRouteSegment(1);
   const router = useRouter();
-  const routeId = params.id;
+  const routeId = segment && segment !== "new" ? segment : undefined;
   const [note, setNote] = useState<PersonalNote | null>(() => routeId ? null : readRecovery() ?? newNote(makeId()));
   const [mode, setMode] = useState<Mode>("text");
   const [tool, setTool] = useState<Tool>("accent");

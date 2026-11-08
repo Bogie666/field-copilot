@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useLastBackup } from "./BackupPage";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { getBrowserStore } from "../lib/job/browserStore";
@@ -20,6 +21,20 @@ function when(iso: string): string {
   const sameDay = d.toDateString() === today.toDateString();
   const date = sameDay ? "Today" : d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() === today.getFullYear() ? undefined : "numeric" });
   return `${date} · ${d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
+function BackupReminder({ jobCount }: { jobCount: number }) {
+  const last = useLastBackup();
+  const [now] = useState(() => Date.now());
+  if (jobCount === 0) return null;
+  const days = last ? Math.max(0, Math.floor((now - Date.parse(last)) / 86_400_000)) : null;
+  const stale = days === null || days >= 7;
+  return (
+    <p className={stale ? "backupReminder stale" : "backupReminder"}>
+      {days === null ? "These jobs are only on this device and have not been backed up." : days === 0 ? "Backed up today." : `Last backup ${days} ${days === 1 ? "day" : "days"} ago.`}{" "}
+      <Link href="/backup">{stale ? "Back up now" : "Backup and restore"}</Link>
+    </p>
+  );
 }
 
 export default function JobList() {
@@ -146,6 +161,7 @@ export default function JobList() {
           ))}
         </ul>
       )}
+      <BackupReminder jobCount={jobs?.length ?? 0} />
       <p className="hint" style={{ marginTop: 24 }}>
         Need a single tool without a job? <Link href="/tools">Open the tool list</Link>.
       </p>

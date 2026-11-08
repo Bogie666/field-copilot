@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useRouteSegment } from "../../lib/routeSegments";
 import type { ReactNode } from "react";
 import { JobProvider, useJob } from "../../components/JobProvider";
 import { EmptyState } from "../../components/ui";
@@ -40,9 +40,9 @@ function Gate({ children }: { children: ReactNode }) {
 }
 
 export default function JobLayout({ children }: { children: ReactNode }) {
-  const params = useParams<{ id: string }>();
+  const id = useRouteSegment(1);
   return (
-    <JobProvider key={params.id} jobId={params.id}>
+    <JobProvider key={id} jobId={id}>
       <Gate>{children}</Gate>
     </JobProvider>
   );

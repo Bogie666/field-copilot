@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { notFound, useParams, useSearchParams } from "next/navigation";
+import { notFound, useSearchParams } from "next/navigation";
+import { useRouteSegment } from "../lib/routeSegments";
 import { TOOLS, tileById, toolById, type ToolId } from "../lib/job/registry";
 import { jobHref, resolveRouteScope } from "../lib/job/routes";
 import { scopeKey } from "../lib/job/types";
@@ -13,7 +14,9 @@ import SaveIndicator from "./SaveIndicator";
 import { RecordToolUse } from "./ToolShortcuts";
 
 export default function ToolPage() {
-  const { id, tile: tileId, tool: toolParam } = useParams<{ id: string; tile: string; tool: string }>();
+  const id = useRouteSegment(1);
+  const tileId = useRouteSegment(2);
+  const toolParam = useRouteSegment(3);
   const params = useSearchParams();
   const api = useJob();
   const { job } = api;
