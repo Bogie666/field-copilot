@@ -63,7 +63,7 @@ export default function InsulationTool({ ctx }: { ctx: ToolContext }) {
         <h3>Measurements</h3>
         <SelectField label="Material" value={form.material} onChange={(v) => set("material", v as InsulationInput["material"])} options={[{ value: "unknown", label: "Unknown" }, { value: "fiberglass", label: "Loose fiberglass" }, { value: "cellulose", label: "Cellulose" }, { value: "batts", label: "Batts" }]} />
         {form.depths.map((d, i) => (
-          <NumberField key={i} label={`Depth reading ${i + 1}`} unit="in" value={d} onChange={(v) => set("depths", form.depths.map((x, j) => (j === i ? v : x)))} />
+          <NumberField key={i} label={`Depth reading ${i + 1}`} unit="in" value={d} onChange={(v) => setForm((c) => ({ ...c, depths: c.depths.map((x, j) => (j === i ? v : x)) }))} />
         ))}
         <div className="btnRow">
           {form.depths.length < 8 && <button className="btn" type="button" onClick={() => set("depths", [...form.depths, ""])}>Add reading</button>}

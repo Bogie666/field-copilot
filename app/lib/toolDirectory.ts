@@ -7,6 +7,7 @@ export type DirectoryGroup = { label: string; entries: DirectoryEntry[] };
 const tool = (id: ToolId): DirectoryEntry => ({ id, href: `/tools/${id}`, title: TOOLS[id].label, meta: TOOLS[id].description });
 
 export const TOOL_GROUPS: DirectoryGroup[] = [
+  { label: "Troubleshooting", entries: [{ id: "troubleshoot", href: "/troubleshoot", title: "Troubleshooting guides", meta: "Pick a symptom and follow the usual order of checks, with links to each tool." }] },
   { label: "Maintenance", entries: [tool("maintenance")] },
   { label: "Equipment diagnostics", entries: (["electrical", "charge", "heatpump", "furnace", "gas", "static", "airflow", "airside", "compressor"] as const).map(tool) },
   { label: "Install and repair", entries: (["evacuation", "refrigerantLog"] as const).map(tool) },

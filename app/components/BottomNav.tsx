@@ -6,7 +6,7 @@ import { BriefcaseIcon, CameraIcon, NotebookIcon, WrenchIcon } from "./Icons";
 
 const TABS = [
   { href: "/", label: "Jobs", Icon: BriefcaseIcon, active: (p: string) => p === "/" || p.startsWith("/job/") },
-  { href: "/tools", label: "Tools", Icon: WrenchIcon, active: (p: string) => p.startsWith("/tools") },
+  { href: "/tools", label: "Tools", Icon: WrenchIcon, active: (p: string) => p.startsWith("/tools") || p.startsWith("/troubleshoot") },
   { href: "/notes", label: "Notes", Icon: NotebookIcon, active: (p: string) => p === "/notes" },
   { href: "/photos", label: "Photos", Icon: CameraIcon, active: (p: string) => p.startsWith("/photos") },
 ] as const;

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useId, type ReactNode } from "react";
+import { useContext, useEffect, useId, type ReactNode } from "react";
+import { VoiceRegistryContext } from "./voiceRegistry";
 import type { Severity } from "../lib/job/types";
 import { ChevronLeft, ChevronRight } from "./Icons";
 
@@ -53,9 +54,17 @@ type NumberFieldProps = {
 
 /** Decimal text input. Blank stays blank: nothing is ever defaulted to zero. */
 export function NumberField({ label, value, onChange, unit, hint, tag, placeholder }: NumberFieldProps) {
+  const voice = useContext(VoiceRegistryContext);
+  const voiceId = useId();
+  // Re-registered every render so spoken readings always use the latest setter and value.
+  useEffect(() => {
+    if (!voice) return;
+    voice.set(voiceId, { label, unit, value, apply: onChange });
+    return () => { voice.delete(voiceId); };
+  });
   return (
     <Field label={unit ? `${label} (${unit})` : label} hint={hint} tag={tag}>
-      {(id) => <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder ?? ""} onChange={(e) => onChange(e.target.value)} />}
+      {(id) => <input id={id} data-voice-id={voice ? voiceId : undefined} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder ?? ""} onChange={(e) => onChange(e.target.value)} />}
     </Field>
   );
 }

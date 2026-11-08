@@ -17,7 +17,8 @@ const NAV_TIMEOUT_MS = 4000;
 const TEMPLATE = "__offline__";
 
 const TOOL_IDS = ["maintenance", "electrical", "charge", "heatpump", "furnace", "gas", "static", "airflow", "airside", "compressor", "evacuation", "refrigerantLog", "insulation", "duct", "load", "explain"];
-const TROUBLESHOOT = self.__FC_TROUBLESHOOT__ || [];
+// Keep in sync with app/lib/troubleshoot/flows.ts (checked by a unit test).
+const TROUBLESHOOT = ["no-cool-outdoor-off", "outdoor-fan-not-running", "compressor-not-starting", "poor-cooling", "frozen-coil", "no-blower", "furnace-no-heat", "furnace-short-cycle", "heat-pump-not-heating", "water-leak"];
 const PRECACHE_PAGES = [
   "/", "/tools", "/notes", "/notes/new", "/photos", "/backup", "/troubleshoot", "/tools/unit-explorer",
   ...TOOL_IDS.map((id) => `/tools/${id}`),

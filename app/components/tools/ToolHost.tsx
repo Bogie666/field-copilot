@@ -3,6 +3,7 @@
 import type { ComponentType } from "react";
 import type { ToolId } from "../../lib/job/registry";
 import type { ToolContext } from "./context";
+import VoiceEntry from "../VoiceEntry";
 import AirflowTool from "./AirflowTool";
 import DuctTool from "./DuctTool";
 import InsulationTool from "./InsulationTool";
@@ -50,5 +51,5 @@ const REGISTRY: Partial<Record<ToolId, ToolComponent>> = {
 export function ToolHost({ ctx }: { ctx: ToolContext }) {
   const Component = REGISTRY[ctx.toolId];
   if (!Component) return <p className="hint">This tool is not available yet.</p>;
-  return <Component ctx={ctx} />;
+  return <VoiceEntry><Component ctx={ctx} /></VoiceEntry>;
 }

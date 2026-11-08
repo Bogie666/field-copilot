@@ -19,7 +19,7 @@ export default function AirflowTool({ ctx }: { ctx: ToolContext }) {
   const unit = direct ? "CFM" : "FPM";
   const touched = form.readings.some((r) => r.trim()) && !!form.method;
   const { errors, result } = assessAirflow(form);
-  const setList = (key: "readings" | "afterReadings", i: number, v: string) => set(key, form[key].map((x, j) => (j === i ? v : x)));
+  const setList = (key: "readings" | "afterReadings", i: number, v: string) => setForm((c) => ({ ...c, [key]: c[key].map((x, j) => (j === i ? v : x)) }));
 
   const built: BuiltFinding | null =
     result && touched
