@@ -5,6 +5,7 @@ import "./globals.css";
 import { brand } from "./config/brand";
 import BottomNav from "./components/BottomNav";
 import OfflineSupport from "./components/OfflineSupport";
+import { ACCENT_BOOT_SCRIPT } from "./lib/accentTheme";
 
 export const metadata: Metadata = {
   title: { default: brand.productName, template: `%s | ${brand.productName}` },
@@ -18,5 +19,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#161826" };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
-  return <html lang="en"><body><div className="shell"><OfflineSupport />{children}<BottomNav /></div></body></html>;
+  return <html lang="en" suppressHydrationWarning><head><script dangerouslySetInnerHTML={{ __html: ACCENT_BOOT_SCRIPT }} /></head><body><div className="shell"><OfflineSupport />{children}<BottomNav /></div></body></html>;
 }

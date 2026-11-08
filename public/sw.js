@@ -20,7 +20,7 @@ const TOOL_IDS = ["maintenance", "electrical", "charge", "heatpump", "furnace", 
 // Keep in sync with app/lib/troubleshoot/flows.ts (checked by a unit test).
 const TROUBLESHOOT = ["no-cool-outdoor-off", "outdoor-fan-not-running", "compressor-not-starting", "poor-cooling", "frozen-coil", "no-blower", "furnace-no-heat", "furnace-short-cycle", "heat-pump-not-heating", "water-leak"];
 const PRECACHE_PAGES = [
-  "/", "/tools", "/notes", "/notes/new", "/photos", "/backup", "/troubleshoot", "/tools/unit-explorer",
+  "/", "/tools", "/notes", "/notes/new", "/photos", "/backup", "/settings", "/troubleshoot", "/tools/unit-explorer",
   ...TOOL_IDS.map((id) => `/tools/${id}`),
   ...TROUBLESHOOT.map((id) => `/troubleshoot/${id}`),
   `/job/${TEMPLATE}`, `/job/${TEMPLATE}/summary`, `/job/${TEMPLATE}/condenser`, `/job/${TEMPLATE}/condenser/electrical`, `/notes/${TEMPLATE}`,

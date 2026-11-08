@@ -163,7 +163,7 @@ export default function JobList() {
       )}
       <BackupReminder jobCount={jobs?.length ?? 0} />
       <p className="hint" style={{ marginTop: 24 }}>
-        Need a single tool without a job? <Link href="/tools">Open the tool list</Link>.
+        Need a single tool without a job? <Link href="/tools">Open the tool list</Link>. <Link href="/settings">Settings</Link>
       </p>
       <p className="screeningLine">Findings are screening results for technician review.</p>
       {deleting && (
