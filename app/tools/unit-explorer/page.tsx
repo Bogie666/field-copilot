@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FavoriteButton, RecordToolUse } from "../../components/ToolShortcuts";
 import { Crumbs } from "../../components/ui";
 
 export const metadata: Metadata = { title: "3D unit explorer" };
@@ -10,6 +11,7 @@ const EXPLORER_SRC = "/explorer/index.html";
 export default function UnitExplorerPage() {
   return (
     <main className="explorerPage">
+      <RecordToolUse id="unit-explorer" />
       <div className="explorerHead">
         <Crumbs items={[{ href: "/tools", label: "Tools" }, { label: "3D unit explorer" }]} />
         <div className="explorerTitleRow">
@@ -17,7 +19,10 @@ export default function UnitExplorerPage() {
             <h1>3D unit explorer</h1>
             <p className="lede">Variable-speed outdoor unit: exploded views, part details, guided teardown and refrigerant flow. Representational model, not to OEM layout.</p>
           </div>
-          <a className="btn" href={EXPLORER_SRC} target="_blank" rel="noopener">Full screen</a>
+          <div className="explorerActions">
+            <FavoriteButton id="unit-explorer" title="3D unit explorer" />
+            <a className="btn" href={EXPLORER_SRC} target="_blank" rel="noopener">Full screen</a>
+          </div>
         </div>
       </div>
       <iframe className="explorerFrame" src={EXPLORER_SRC} title="3D unit explorer" allow="fullscreen" />

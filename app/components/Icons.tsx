@@ -137,3 +137,11 @@ export function ChevronLeft(props: IconProps) {
 export function MicrophoneIcon(props: IconProps) {
   return <Svg {...props}><rect x="17" y="5" width="14" height="25" rx="7" /><path d="M11 24a13 13 0 0 0 26 0M24 37v7M17 44h14" /></Svg>;
 }
+
+export function StarIcon({ filled, ...props }: IconProps & { filled?: boolean }) {
+  return (
+    <Svg {...props}>
+      <path d="M24 6l5.6 11.4 12.6 1.8-9.1 8.9 2.1 12.5L24 34.7l-11.2 5.9 2.1-12.5-9.1-8.9 12.6-1.8z" fill={filled ? "currentColor" : "none"} />
+    </Svg>
+  );
+}
