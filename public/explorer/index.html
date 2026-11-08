@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Variable-Speed 3D Trainer</title>
+  <meta name="description" content="Interactive 3D explorer of a variable-speed air conditioning system for HVAC technician training — exploded views, guided teardown and refrigerant flow." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <header id="topbar">
+      <button id="menu-btn" class="icon-btn" aria-label="Parts list">☰</button>
+      <div class="brand">
+        <div class="brand-mark">VS</div>
+        <div class="brand-text">
+          <div class="brand-title">Variable-Speed A/C</div>
+          <div class="brand-sub">3D Service Trainer</div>
+        </div>
+      </div>
+      <nav id="modes" role="tablist">
+        <button class="mode active" data-mode="explore">Explore</button>
+        <button class="mode" data-mode="teardown">Guided Teardown</button>
+        <button class="mode" data-mode="flow">Refrigerant Flow</button>
+      </nav>
+      <button id="help-btn" class="icon-btn" aria-label="Help">?</button>
+    </header>
+
+    <aside id="sidebar">
+      <div class="search-wrap">
+        <input id="search" type="search" placeholder="Search parts…" autocomplete="off" />
+      </div>
+      <div id="part-list"></div>
+      <div class="sidebar-foot">
+        <button id="show-all" class="link-btn">Show all parts</button>
+      </div>
+    </aside>
+
+    <main id="viewport">
+      <div id="loading"><div class="spinner"></div><div>Building unit…</div></div>
+      <div id="tooltip"></div>
+
+      <div id="view-tools">
+        <button class="tool" id="t-labels" title="Numbered callouts (L)">🏷<span>Callouts</span></button>
+        <button class="tool" id="t-xray" title="X-ray cabinet (X)">◐<span>X-ray</span></button>
+        <button class="tool" id="t-section" title="Section cut (C)">✂<span>Section</span></button>
+        <button class="tool" id="t-blueprint" title="Blueprint render (B)">▦<span>Blueprint</span></button>
+        <button class="tool" id="t-rotate" title="Turntable (T)">⟳<span>Turntable</span></button>
+        <button class="tool" id="t-reset" title="Reset view (R)">⌂<span>Reset</span></button>
+      </div>
+
+      <div id="section-ctrl" class="floating hidden">
+        <label>Section plane
+          <select id="section-axis"><option value="x">Left / Right</option><option value="z">Front / Back</option><option value="d">Diagonal (service corner)</option></select>
+        </label>
+        <input id="section-pos" type="range" min="-1" max="1" step="0.005" value="0.05" />
+      </div>
+
+      <div id="explode-bar">
+        <div class="explode-styles">
+          <button class="chip active" data-style="radial" title="Service exploded view">Exploded</button>
+          <button class="chip" data-style="layout" title="Lay every part out on the shop floor">Parts table</button>
+        </div>
+        <div class="explode-row">
+          <button id="btn-assemble" class="pill">Assemble</button>
+          <input id="explode" type="range" min="0" max="1" step="0.001" value="0" aria-label="Explode amount" />
+          <button id="btn-explode" class="pill primary">Explode</button>
+        </div>
+      </div>
+
+      <div id="teardown-panel" class="panel hidden">
+        <div class="td-head">
+          <span id="td-count" class="td-count"></span>
+          <span id="td-title" class="td-title"></span>
+        </div>
+        <p id="td-text"></p>
+        <div class="td-dots" id="td-dots"></div>
+        <div class="td-nav">
+          <button id="td-prev" class="pill">‹ Back</button>
+          <button id="td-next" class="pill primary">Next ›</button>
+        </div>
+      </div>
+
+      <div id="flow-legend" class="panel hidden">
+        <div class="panel-title">Refrigerant flow — cooling mode</div>
+        <div id="flow-items"></div>
+        <label class="row">Speed <input id="flow-speed" type="range" min="0.2" max="3" step="0.1" value="1" /></label>
+        <label class="row check"><input id="flow-tint" type="checkbox" checked /> Color-code piping</label>
+      </div>
+
+    </main>
+
+    <aside id="info" class="hidden">
+      <button id="info-close" class="icon-btn" aria-label="Close">✕</button>
+      <div id="info-body"></div>
+    </aside>
+
+    <div id="help" class="modal hidden">
+      <div class="modal-card">
+        <h2>How to use the trainer</h2>
+        <ul>
+          <li><b>Rotate</b> drag · <b>Pan</b> right-drag / two-finger · <b>Zoom</b> scroll / pinch</li>
+          <li><b>Click</b> any part (or pick from the list) to see its function, failure modes and tests. Double-click to fly to it.</li>
+          <li><b>Exploded</b> pulls the unit apart in service order; <b>Parts table</b> lays every part out on the floor.</li>
+          <li><b>Guided Teardown</b> walks through a safe disassembly. <b>Refrigerant Flow</b> animates the cooling cycle.</li>
+          <li>Keys: <kbd>E</kbd> explode · <kbd>L</kbd> callouts · <kbd>X</kbd> x-ray · <kbd>C</kbd> section · <kbd>B</kbd> blueprint · <kbd>T</kbd> turntable · <kbd>R</kbd> reset · <kbd>Esc</kbd> deselect</li>
+        </ul>
+        <p class="disclaimer">Representational training model — geometry is approximate and not to OEM scale or layout. Trane and Spine Fin are trademarks of their owners; this trainer is not affiliated with or endorsed by Trane. Always follow the manufacturer’s installation and service literature and wiring diagram for the specific model and serial number.</p>
+        <button id="help-close" class="pill primary">Got it</button>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

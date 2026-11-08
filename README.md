@@ -64,6 +64,7 @@ See `.env.example` for AI provider and Basic auth settings.
 - `app/components/tools/`: one component per tool, hosted by `ToolHost.tsx`. `SaveFinding.tsx` is the shared review and save step.
 - `app/api/`: `explain`, `structure-notes`, `nameplate-ocr`, `health`.
 - `proxy.ts`: optional Basic auth.
+- `public/explorer/`: the 3D unit explorer (plain three.js, no build step, loaded from the jsDelivr CDN), embedded at `/tools/unit-explorer`. It is a copy of the `3D-hvac` trainer without the quiz; edit training content in `public/explorer/js/content.js`.
 
 Rules the code enforces: blank means blank, findings save only on an explicit Save, a safety finding needs a safety action (furnace and insulation also need a photo), the job label and photos never go to AI, over-long text is blocked rather than truncated, and equipment age comes from a technician-confirmed printed manufacture date or an explicit manual override. Serial numbers are never decoded for age.
 

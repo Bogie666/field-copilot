@@ -12,6 +12,11 @@ const GROUPS = [
   { label: "Customer communication", tools: ["explain"] },
 ] as const;
 
+// Reference material that lives outside the measurement tool registry.
+const REFERENCE = [
+  { href: "/tools/unit-explorer", title: "3D unit explorer", meta: "Explore a variable-speed outdoor unit in 3D: exploded views, part details, guided teardown and refrigerant flow." },
+] as const;
+
 export default function ToolsPage() {
   return (
     <main className="page">
@@ -25,6 +30,14 @@ export default function ToolsPage() {
             </li>)}
           </ul>
         </section>)}
+        <section aria-labelledby="tools-training-and-reference">
+          <h2 className="sectionLabel" id="tools-training-and-reference">Training and reference</h2>
+          <ul className="list">
+            {REFERENCE.map(item => <li key={item.href}>
+              <ListLink href={item.href} title={item.title} meta={item.meta} />
+            </li>)}
+          </ul>
+        </section>
       </div>
       <p style={{ marginTop: 20 }}>
         <Link className="btn primary" href="/">
