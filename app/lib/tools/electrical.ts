@@ -11,6 +11,25 @@ export type ElectricalInput = {
   capacitorRatedUf: string;
   capacitorMeasuredUf: string;
   capacitorTolerancePct: string;
+  /** Second (FAN) section of a dual run capacitor. Uses the same printed tolerance. */
+  fanCapRatedUf: string;
+  fanCapMeasuredUf: string;
+  /** Installed breaker or fuse size, compared with the nameplate maximum overcurrent protection. */
+  breakerAmps: string;
+  mocp: string;
+  /** Minimum circuit ampacity, recorded as a reference only. */
+  mca: string;
+  lra: string;
+  /** Peak starting (inrush) amps from a meter with an inrush function. */
+  inrushAmps: string;
+  contactor: "" | ContactorCondition;
+};
+
+export type ContactorCondition = "good" | "pitted" | "chattering";
+export const CONTACTOR_LABELS: Record<ContactorCondition, string> = {
+  good: "Contacts clean, pulls in firmly",
+  pitted: "Contacts pitted or burned",
+  chattering: "Chatters or buzzes when energized",
 };
 
 export const EMPTY_ELECTRICAL: ElectricalInput = {
@@ -23,6 +42,14 @@ export const EMPTY_ELECTRICAL: ElectricalInput = {
   capacitorRatedUf: "",
   capacitorMeasuredUf: "",
   capacitorTolerancePct: "",
+  fanCapRatedUf: "",
+  fanCapMeasuredUf: "",
+  breakerAmps: "",
+  mocp: "",
+  mca: "",
+  lra: "",
+  inrushAmps: "",
+  contactor: "",
 };
 
 export const VOLTAGE_TOLERANCE_PCT = 10;
@@ -64,6 +91,13 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
     capRated: parseDecimal(input.capacitorRatedUf, "Rated capacitance", { positive: true, max: 1000 }),
     capMeasured: parseDecimal(input.capacitorMeasuredUf, "Measured capacitance", { min: 0, max: 1000 }),
     capTol: parseDecimal(input.capacitorTolerancePct, "Capacitor tolerance", { positive: true, max: 50 }),
+    fanCapRated: parseDecimal(input.fanCapRatedUf, "Rated FAN capacitance", { positive: true, max: 100 }),
+    fanCapMeasured: parseDecimal(input.fanCapMeasuredUf, "Measured FAN capacitance", { min: 0, max: 100 }),
+    breaker: parseDecimal(input.breakerAmps, "Breaker or fuse size", { positive: true, max: 600 }),
+    mocp: parseDecimal(input.mocp, "Maximum overcurrent protection", { positive: true, max: 600 }),
+    mca: parseDecimal(input.mca, "Minimum circuit ampacity", { positive: true, max: 600 }),
+    lra: parseDecimal(input.lra, "Compressor LRA", { positive: true, max: 1000 }),
+    inrush: parseDecimal(input.inrushAmps, "Inrush amps", { min: 0, max: 1000 }),
   };
   for (const parsed of Object.values(p)) if (parsed.ok === false) errors.push(parsed.error);
   if (errors.length) return { errors, result: null };
@@ -78,10 +112,20 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
   const capRated = val(p.capRated);
   const capMeasured = val(p.capMeasured);
   const capTol = val(p.capTol);
+  const fanCapRated = val(p.fanCapRated);
+  const fanCapMeasured = val(p.fanCapMeasured);
+  const breaker = val(p.breaker);
+  const mocp = val(p.mocp);
+  const mca = val(p.mca);
+  const lra = val(p.lra);
+  const inrush = val(p.inrush);
+  const contactor = input.contactor && input.contactor in CONTACTOR_LABELS ? input.contactor : "";
 
   const capEntered = [capRated, capMeasured, capTol].filter((v) => v !== null).length;
   if (capEntered > 0 && capEntered < 3) errors.push("For the capacitor, enter rated uF, measured uF and tolerance percent together.");
-  if (measured === null && amps === null && fanAmps === null && capMeasured === null) errors.push("Enter at least one measured reading.");
+  if ((fanCapRated === null) !== (fanCapMeasured === null)) errors.push("For the FAN capacitor section, enter rated and measured uF together.");
+  if (fanCapRated !== null && fanCapMeasured !== null && capTol === null) errors.push("Enter the capacitor tolerance to check the FAN section.");
+  if (measured === null && amps === null && fanAmps === null && capMeasured === null && fanCapMeasured === null && breaker === null && inrush === null && !contactor) errors.push("Enter at least one measured reading.");
   if (errors.length) return { errors, result: null };
 
   const items: ResultItem[] = [];
@@ -152,6 +196,49 @@ export function assessElectrical(input: ElectricalInput): ElectricalAssessment {
       line: `${fmt(capMeasured)} uF measured against ${fmt(capRated)} uF rated (${dev >= 0 ? "+" : "-"}${fmt(Math.abs(dev))} percent, tolerance ${fmt(capTol)} percent): ${within ? "within" : "outside"} tolerance.`,
       tone: within ? "ok" : "concern",
     });
+  }
+
+  if (fanCapMeasured !== null && fanCapRated !== null && capTol !== null) {
+    const dev = ((fanCapMeasured - fanCapRated) / fanCapRated) * 100;
+    if (!Number.isFinite(dev)) return { errors: ["FAN capacitor percentage is nonfinite. Check the readings."], result: null };
+    const within = Math.abs(dev) <= capTol;
+    readings.push({ label: "FAN capacitor measured", value: fanCapMeasured, unit: "uF", source: "entered" });
+    readings.push({ label: "FAN capacitor rated", value: fanCapRated, unit: "uF", source: "entered" });
+    references.push(`FAN section ${fmt(fanCapRated)} uF`);
+    items.push({
+      id: "fan-capacitor",
+      label: "FAN capacitor",
+      line: `FAN section ${fmt(fanCapMeasured)} uF measured against ${fmt(fanCapRated)} uF rated (${dev >= 0 ? "+" : "-"}${fmt(Math.abs(dev))} percent, tolerance ${fmt(capTol)} percent): ${within ? "within" : "outside"} tolerance.`,
+      tone: within ? "ok" : "concern",
+    });
+  }
+
+  if (breaker !== null) {
+    readings.push({ label: "Breaker or fuse size", value: breaker, unit: "A", source: "entered" });
+    const mcaText = mca !== null ? ` Nameplate minimum circuit ampacity is ${fmt(mca)} A; confirm conductor size separately.` : "";
+    if (mca !== null) references.push(`minimum circuit ampacity ${fmt(mca)} A`);
+    if (mocp !== null) {
+      references.push(`maximum overcurrent protection ${fmt(mocp, 0)} A`);
+      const above = breaker > mocp;
+      items.push({ id: "breaker", label: "Overcurrent protection", line: `${fmt(breaker, 0)} A breaker or fuse is ${above ? "above" : "at or below"} the ${fmt(mocp, 0)} A nameplate maximum.${mcaText}`, tone: above ? "concern" : "ok" });
+    } else {
+      items.push({ id: "breaker", label: "Overcurrent protection", line: `${fmt(breaker, 0)} A breaker or fuse recorded. No maximum overcurrent protection entered, so it is not compared.${mcaText}`, tone: "info" });
+    }
+  }
+
+  if (inrush !== null) {
+    readings.push({ label: "Compressor inrush amps", value: inrush, unit: "A", source: "entered" });
+    if (lra !== null) {
+      references.push(`compressor LRA ${fmt(lra)} A`);
+      const above = inrush > lra;
+      items.push({ id: "inrush", label: "Starting amps", line: `${fmt(inrush)} A inrush is ${fmt((inrush / lra) * 100, 0)} percent of the ${fmt(lra)} A LRA${above ? ", above LRA" : ""}.`, tone: above ? "concern" : "info" });
+    } else {
+      items.push({ id: "inrush", label: "Starting amps", line: `${fmt(inrush)} A inrush measured. No LRA entered, so it is not compared.`, tone: "info" });
+    }
+  }
+
+  if (contactor) {
+    items.push({ id: "contactor", label: "Contactor", line: `Contactor: ${CONTACTOR_LABELS[contactor].toLowerCase()}.`, tone: contactor === "good" ? "ok" : "concern" });
   }
 
   const tone = worstTone(items);

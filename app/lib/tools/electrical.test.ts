@@ -97,4 +97,28 @@ describe("nameplate helpers", () => {
   it.each(["-240 V", "240e0 V", "2.4e2 V", "208 230 V", "208/230 V 60 Hz", "208/230/NaN V", "208/-230 V", "240.0.0 V", "208/700 V", "240 kV"])("rejects ambiguous or unsupported nominal voltage text %s", (value) => {
     expect(voltageOptions(value)).toEqual([]);
   });
+
+  it("compares the breaker with MOCP and keeps MCA as a reference only", () => {
+    const over = assessElectrical({ ...EMPTY_ELECTRICAL, breakerAmps: "40", mocp: "35", mca: "22.5" }).result!;
+    expect(over.items.find(i => i.id === "breaker")!.tone).toBe("concern");
+    expect(over.items.find(i => i.id === "breaker")!.line).toContain("22.5 A");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, breakerAmps: "35", mocp: "35" }).result!.items[0].tone).toBe("ok");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, breakerAmps: "35" }).result!.items[0].tone).toBe("info");
+  });
+
+  it("checks the FAN capacitor section with the shared tolerance", () => {
+    const r = assessElectrical({ ...EMPTY_ELECTRICAL, capacitorRatedUf: "45", capacitorMeasuredUf: "44", capacitorTolerancePct: "6", fanCapRatedUf: "5", fanCapMeasuredUf: "4.2" }).result!;
+    expect(r.items.find(i => i.id === "capacitor")!.tone).toBe("ok");
+    expect(r.items.find(i => i.id === "fan-capacitor")!.tone).toBe("concern");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, fanCapRatedUf: "5" }).errors.join(" ")).toContain("FAN");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, fanCapRatedUf: "5", fanCapMeasuredUf: "5" }).errors.join(" ")).toContain("tolerance");
+  });
+
+  it("records inrush against LRA and contactor condition", () => {
+    const r = assessElectrical({ ...EMPTY_ELECTRICAL, inrushAmps: "120", lra: "100", contactor: "pitted" }).result!;
+    expect(r.items.find(i => i.id === "inrush")!.tone).toBe("concern");
+    expect(r.items.find(i => i.id === "contactor")!.tone).toBe("concern");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, inrushAmps: "80", lra: "100" }).result!.severity).toBe("info");
+    expect(assessElectrical({ ...EMPTY_ELECTRICAL, contactor: "good" }).result!.severity).toBe("ok");
+  });
 });

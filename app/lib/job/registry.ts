@@ -13,7 +13,14 @@ export type ToolId =
   | "load"
   | "photos"
   | "notes"
-  | "explain";
+  | "explain"
+  | "heatpump"
+  | "gas"
+  | "evacuation"
+  | "refrigerantLog"
+  | "compressor"
+  | "airside"
+  | "maintenance";
 
 export type ToolKind = "finding" | "equipment" | "media" | "notes" | "standalone";
 
@@ -39,6 +46,13 @@ export const TOOLS: Record<ToolId, ToolDef> = {
   photos: { id: "photos", label: "Photos", description: "Take, mark up and attach photos.", kind: "media" },
   notes: { id: "notes", label: "Job notes", description: "Dictate job notes and tidy them into sections.", kind: "notes" },
   explain: { id: "explain", label: "Customer note", description: "Write an estimate note from free-typed facts.", kind: "standalone" },
+  heatpump: { id: "heatpump", label: "Heat pump heating", description: "Heating rise, heating subcooling, heat strip output and defrost check.", kind: "finding", findingKey: "heatpump" },
+  gas: { id: "gas", label: "Gas pressure and input", description: "Inlet and manifold pressure, clocked firing rate and flame signal.", kind: "finding", findingKey: "gas" },
+  evacuation: { id: "evacuation", label: "Pressure test and evacuation", description: "Nitrogen standing test with temperature correction, vacuum and decay test.", kind: "finding", findingKey: "evacuation" },
+  refrigerantLog: { id: "refrigerantLog", label: "Refrigerant record", description: "Refrigerant added or recovered, and the line set charge adjustment.", kind: "finding", findingKey: "refrigerantLog" },
+  compressor: { id: "compressor", label: "Compressor windings", description: "Winding resistance and insulation to ground.", kind: "finding", findingKey: "compressor" },
+  airside: { id: "airside", label: "Filter, drain and humidity", description: "Filter condition, condensate drain, overflow switch and indoor dew point.", kind: "finding", findingKey: "airside" },
+  maintenance: { id: "maintenance", label: "Tune-up checklist", description: "Pass or fail each maintenance item, with links to the measuring tools.", kind: "finding", findingKey: "maintenance" },
 };
 
 export type TileId = "condenser" | "furnace" | "attic" | "home" | "legacy";
@@ -54,13 +68,13 @@ export type TileDef = {
 };
 
 export const TILES: TileDef[] = [
-  { id: "condenser", label: "Condenser", description: "Outdoor unit", scope: "system", tools: ["nameplate", "electrical", "charge", "photos", "notes"], expected: ["electrical", "charge"] },
-  { id: "furnace", label: "Furnace or air handler", description: "Indoor unit", scope: "system", tools: ["nameplate", "furnace", "static", "airflow", "electrical", "photos", "notes"], expected: ["furnace", "static", "airflow"] },
+  { id: "condenser", label: "Condenser", description: "Outdoor unit", scope: "system", tools: ["nameplate", "maintenance", "electrical", "charge", "heatpump", "compressor", "evacuation", "refrigerantLog", "photos", "notes"], expected: ["electrical", "charge"] },
+  { id: "furnace", label: "Furnace or air handler", description: "Indoor unit", scope: "system", tools: ["nameplate", "maintenance", "furnace", "gas", "static", "airflow", "airside", "electrical", "photos", "notes"], expected: ["furnace", "static", "airflow"] },
   { id: "attic", label: "Attic and ductwork", description: "Insulation and duct runs", scope: "system", tools: ["insulation", "duct", "static", "photos", "notes"], expected: ["insulation", "duct"] },
   { id: "home", label: "Whole home", description: "Load and general notes", scope: "home", tools: ["load", "photos", "notes"], expected: ["load"] },
 ];
 
-export const LEGACY_TILE: TileDef = { id: "legacy", label: "Unassigned legacy equipment", description: "Preserved evidence with unconfirmed component identity", scope: "system", tools: ["nameplate", "electrical", "charge", "furnace", "static", "airflow", "insulation", "duct", "photos", "notes"], expected: [] };
+export const LEGACY_TILE: TileDef = { id: "legacy", label: "Unassigned legacy equipment", description: "Preserved evidence with unconfirmed component identity", scope: "system", tools: ["nameplate", "maintenance", "electrical", "charge", "heatpump", "compressor", "evacuation", "refrigerantLog", "furnace", "gas", "static", "airflow", "airside", "insulation", "duct", "photos", "notes"], expected: [] };
 
 export function tileById(id: string): TileDef | undefined {
   return id === "legacy" ? LEGACY_TILE : TILES.find((t) => t.id === id);

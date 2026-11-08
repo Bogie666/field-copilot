@@ -7,7 +7,9 @@ export const metadata: Metadata = { title: "Tools" };
 
 // Tools that make sense without a job. Equipment scan and photos belong to a system.
 const GROUPS = [
-  { label: "Equipment diagnostics", tools: ["electrical", "charge", "furnace", "static", "airflow"] },
+  { label: "Maintenance", tools: ["maintenance"] },
+  { label: "Equipment diagnostics", tools: ["electrical", "charge", "heatpump", "furnace", "gas", "static", "airflow", "airside", "compressor"] },
+  { label: "Install and repair", tools: ["evacuation", "refrigerantLog"] },
   { label: "Home and airflow planning", tools: ["insulation", "duct", "load"] },
   { label: "Customer communication", tools: ["explain"] },
 ] as const;

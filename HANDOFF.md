@@ -28,7 +28,12 @@ Previous state: all four tiles and every tool pass the end-to-end browser smoke.
 4. **House tolerances** for electrical, static and airflow screening bands.
 5. **Photo limits.** `MAX_PHOTOS_PER_SYSTEM` is 12, JPEG compressed.
 6. **Job label versus job number.** Today a free label. Decide whether to require a work order number.
-7. **Climate presets are DFW specific** (`dfw`, `rockwall`, `tyler` in `app/lib/manualJ.ts`). Other brands need their own presets or the custom option.
+7. **Compressor winding sum band.** `WINDING_SUM_TOLERANCE_PCT` is 10 (S-R against C-S plus C-R). House screening band; confirm or replace.
+8. **Climate presets are DFW specific** (`dfw`, `rockwall`, `tyler` in `app/lib/manualJ.ts`). Other brands need their own presets or the custom option.
+
+## Field coverage tools (November 2026)
+
+Added heat pump heating, gas pressure and input, pressure test and evacuation, refrigerant record (with line set adjustment), compressor windings, filter/drain/humidity, and an indoor/outdoor tune-up checklist. Electrical now also covers breaker against MOCP (MCA recorded as reference), inrush against LRA, the FAN section of a dual capacitor, and contactor condition. Every acceptance value (heating rise and subcooling targets, inlet/manifold ranges, firing-rate tolerance, flame minimum, allowed pressure drop, vacuum targets, megohm minimum, heat strip tolerance) is typed by the technician from the manufacturer or company procedure; blank means the reading is recorded but not classified. Physics-only calculations: heat strip kW corrected by voltage squared, meter clocking, ideal-gas pressure-test temperature correction at 14.7 psi atmosphere, Magnus dew point. A gas odor/leak tick is a safety finding. New tools are not tile "expected" findings, so existing tile progress is unchanged. Mini-split/ductless support is intentionally out of scope.
 
 ## Not done or limited
 

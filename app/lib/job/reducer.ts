@@ -21,11 +21,13 @@ export type JobAction =
 // invalidate every system finding; other fields affect only tools that consume them.
 const IDENTITY_FIELDS = ["manufacturer", "model", "serial", "equipmentType"];
 const TOOL_EQUIPMENT_FIELDS: Record<string, string[]> = {
-  electrical: ["rla", "voltage", "phase"],
+  electrical: ["rla", "voltage", "phase", "mca", "maxFuseBreaker", "lra"],
   charge: ["refrigerant"],
   furnace: ["tempRiseRange"],
   static: ["maxExternalStatic"],
   airflow: ["capacity"],
+  heatpump: ["refrigerant"],
+  refrigerantLog: ["refrigerant"],
 };
 
 function touch(job: Job, now: string): Job {

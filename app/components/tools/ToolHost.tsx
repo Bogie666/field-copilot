@@ -15,6 +15,13 @@ import ChargeTool from "./ChargeTool";
 import ElectricalTool from "./ElectricalTool";
 import FurnaceTool from "./FurnaceTool";
 import StaticTool from "./StaticTool";
+import HeatPumpTool from "./HeatPumpTool";
+import GasTool from "./GasTool";
+import EvacuationTool from "./EvacuationTool";
+import RefrigerantLogTool from "./RefrigerantLogTool";
+import CompressorTool from "./CompressorTool";
+import AirsideTool from "./AirsideTool";
+import MaintenanceTool from "./MaintenanceTool";
 
 type ToolComponent = ComponentType<{ ctx: ToolContext }>;
 
@@ -31,6 +38,13 @@ const REGISTRY: Partial<Record<ToolId, ToolComponent>> = {
   photos: PhotosTool,
   notes: NotesTool,
   explain: ExplainTool,
+  heatpump: HeatPumpTool,
+  gas: GasTool,
+  evacuation: EvacuationTool,
+  refrigerantLog: RefrigerantLogTool,
+  compressor: CompressorTool,
+  airside: AirsideTool,
+  maintenance: MaintenanceTool,
 };
 
 export function ToolHost({ ctx }: { ctx: ToolContext }) {

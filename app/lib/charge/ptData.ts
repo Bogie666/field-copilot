@@ -86,3 +86,9 @@ export function ptSourceReference(refrigerantId: string, tables: readonly PtTabl
   if (!source) return table ? "Custom PT table (source not supplied)" : PT_DATA_SOURCE;
   return `${PT_DATA_SOURCE}: ${source.publisher}, ${source.title}; ${source.url}; document date ${source.documentDate ?? "not stated"}; ${source.pressureUnit} / ${source.temperatureUnit}; ${source.gaugeBasis}; bubble range ${table.bubblePressurePsig?.[0] ?? table.pressurePsig?.[0] ?? table.startPsig} to ${maxPsig(table, "bubble")} psig; dew range ${table.dewPressurePsig?.[0] ?? table.pressurePsig?.[0] ?? table.startPsig} to ${maxPsig(table, "dew")} psig; data SHA-256: ${source.dataSha256}; ${source.extractionNotes}`;
 }
+
+/** Exact refrigerant match for a confirmed nameplate value such as "R-410A"; blank if unknown. */
+export function matchPtRefrigerant(text: string | undefined, tables: readonly PtTable[] = PT_TABLES): string {
+  const t = (text ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return tables.find((r) => r.id.toUpperCase().replace(/[^A-Z0-9]/g, "") === t)?.id ?? "";
+}
