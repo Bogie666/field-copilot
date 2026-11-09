@@ -95,3 +95,21 @@ html[data-accent="graphite"]{--color-accent:oklch(0.74 0.03 250);--color-accent-
 html[data-text="large"] .shell{zoom:1.12}html[data-text="xlarge"] .shell{zoom:1.25}
 html[data-text="large"] .explorerPage{height:calc(100dvh / 1.12)}html[data-text="xlarge"] .explorerPage{height:calc(100dvh / 1.25)}
 .settingsSection{margin-bottom:12px}.sizePicker{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.sizeOption{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px;min-height:76px;padding:10px 6px;border:1px solid var(--color-divider);border-radius:var(--radius-md);background:transparent;color:var(--color-neutral-300);font:inherit;font-size:13px;cursor:pointer}.sizeOption[aria-checked=true]{border-color:var(--color-accent);color:var(--color-accent-200);background:color-mix(in srgb,var(--color-accent-800) 35%,transparent)}.sizeSample{font-weight:600;line-height:1}.aboutList{margin:0;display:grid;gap:10px}.aboutList>div{display:grid;grid-template-columns:minmax(110px,40%) 1fr;gap:12px;font-size:14px}.aboutList dt{color:var(--color-neutral-500)}.aboutList dd{margin:0;color:var(--color-neutral-200);overflow-wrap:anywhere}
+
+/* ---------- Cards: raised, lightly shaded surfaces behind lists, tiles, tool sections and results ----------
+   Appended last so it overrides the flat ledger rules above (including their media queries). */
+:root{--card-bg:color-mix(in srgb,var(--color-surface) 85%,var(--color-bg));--card-border:color-mix(in srgb,var(--color-text) 9%,transparent);--card-radius:14px;--card-shadow:0 1px 0 color-mix(in srgb,var(--color-text) 5%,transparent) inset,0 6px 16px rgba(0,0,0,.22)}
+.list,.jobLedger,.noteList{margin-left:0;margin-right:0;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--card-radius);box-shadow:var(--card-shadow);overflow:hidden}
+.listItem,.jobLedgerRow{padding-left:16px;padding-right:16px}
+.list>li:not(:last-child):after,.noteList>li:not(:last-child):after,.jobLedgerRow:not(:last-child):after{left:16px;right:0;background:var(--color-divider)}
+.tileGrid{margin-left:0;margin-right:0;gap:10px}
+.tile{padding-left:16px;padding-right:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--card-radius);box-shadow:var(--card-shadow)}
+.tile:after{display:none}
+.panel{padding:16px;background:var(--card-bg);border:1px solid var(--card-border)!important;border-radius:var(--card-radius);box-shadow:var(--card-shadow)}
+.stack>.panel:not(:first-child){border-top:1px solid var(--card-border)}
+.panel .panel{box-shadow:none;background:color-mix(in srgb,var(--card-bg) 70%,var(--color-surface))}
+.result{padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-left:4px solid var(--color-neutral-600);border-radius:var(--card-radius);box-shadow:var(--card-shadow)}
+.result[data-tone=ok]{border-left-color:var(--color-accent)}.result[data-tone=concern]{border-left-color:var(--status-attention)}.result[data-tone=safety]{border-left-color:var(--status-safety)}
+.sectionLabel{padding-left:4px}
+.listItem:active,.tile:active,.jobLedgerLink:active{background:color-mix(in srgb,var(--color-text) 5%,transparent)}
+@media print{.list,.jobLedger,.noteList,.tile,.panel,.result{box-shadow:none;background:none}}
